@@ -4,13 +4,14 @@ export driver
 
 function driver()
 	sol = dynamics()
-	pl = plot(layout=(2,1),size=(750,1000),legend=:none)
-	plot!(sol.t,[sol[1,:],sol[2,:]], subplot=1,lw=3)
+	pl = plot(layout=(2,1),size=(1000,800))
+	plot!(sol.t,[sol[1,:],sol[2,:]], subplot=1,lw=[2 3],
+		label=["input value" "internal average"])
 	plot!(sol.t,[sol[4,:],
-		[receptor0(sol[2,i],sol[1,i],100,10,2,1) .* 20 for i in 1:length(sol[1,:])]],
-		subplot=2,lw=3)
+		[receptor0(sol[2,i],sol[1,i],100,10,2,1) .* 25 for i in 1:length(sol[1,:])]],
+		subplot=2,lw=[3 2.5],xlabel="Time", label=["anomaly jumps" "receptor response"])
 	display(pl)
-	return sol
+	return sol, pl
 end
 
 function dynamics()
@@ -22,7 +23,7 @@ function dynamics()
 		du[1] = 0.0002(100 - u[1])
 		du[2] = 5.0(u[1] - u[2])
 		du[3] = 2.0(1 - u[3])
-		du[4] = -10*u[4]
+		du[4] = -60*u[4]
 	end
 	function g!(du, u, p, t) 
 		du[1] = 0.02*u[1]
@@ -34,10 +35,10 @@ function dynamics()
 	u0 = [100.0,100.0,1.0,0.0]
 	tspan = (0.0, 20.0)
 	
-	prob = SDEProblem(f!, g!, u0, tspan, dt=1e-10)
+	prob = SDEProblem(f!, g!, u0, tspan, dt=1e-13)
 	const_jump = ConstantRateJump(rate, affect!)
 	jump_prob = JumpProblem(prob, Direct(), const_jump)
-	sol = solve(jump_prob, SRIW1())
+	sol = solve(jump_prob, SRIW1(),reltol=1e-8)
 	#display(plot(sol, label=["u"], xlabel="Time", ylabel="Value"))
 	return sol
 end
