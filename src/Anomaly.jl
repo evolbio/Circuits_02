@@ -1,5 +1,7 @@
 module Anomaly
 using JumpProcesses, Plots, Random, DifferentialEquations
+include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
+using .MMAColors
 export driver
 
 function driver(; base_in=100, m2_frac=0.1, r_scale=25, rstate = nothing)
@@ -11,11 +13,14 @@ function driver(; base_in=100, m2_frac=0.1, r_scale=25, rstate = nothing)
 	m2 = m2_frac*base_in
 	sol = dynamics(base_in)
 	pl = plot(layout=(2,1),size=(750,600))
-	plot!(sol.t,[sol[1,:],sol[2,:]], subplot=1,lw=[1.5 2.25],
+	plot!(sol.t,[sol[1,:],sol[2,:]], subplot=1,lw=[1.5 2.25],color=[mma[1] mma[2]],
 		label=["input value" "internal average"])
 	plot!(sol.t,[sol[4,:],
 		[receptor0(sol[2,i],sol[1,i],base_in,m2,2,1) .* r_scale for i in 1:length(sol[1,:])]],
-		subplot=2,lw=[2.25 1.8],xlabel="Time", label=["anomaly jumps" "receptor response"])
+		subplot=2,lw=[2.25 1.8],xlabel="Time", label=["anomaly jumps" "receptor response"],
+		color=[mma[1] mma[2]])
+	annotate!(pl,(0.05,0.72),text("(a)",10),subplot=1)
+	annotate!(pl,(0.05,0.88),text("(b)",10),subplot=2)
 	display(pl)
 	return sol, pl
 end

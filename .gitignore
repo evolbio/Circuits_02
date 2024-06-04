@@ -5,6 +5,7 @@ statprof
 tmp
 plots
 analysis
+data
 *.csv
 *.xls
 *.xlsx
