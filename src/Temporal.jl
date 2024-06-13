@@ -4,6 +4,7 @@ include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
 using .MMAColors
 export temporal
 
+# Receptor response for temporal anomaly detection.
 function temporal(; base_in=100, m2_frac=0.1, r_scale=25, rstate = nothing)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
@@ -61,4 +62,4 @@ receptor(u,m1,m2,k,a) = hill(u,m1,k) - a*hill(u,m2,k)
 
 receptor0(us,u,m1,m2,k,a) = receptor(u,m1,m2,k,a) - receptor(us,m1,m2,k,a)
 
-end # module Anomaly
+end # module Temporal
