@@ -8,20 +8,21 @@ export multisensor
 # Receptor response for temporal anomaly detection
 # Run optimization
 function multisensor(n, mTypical, mAnomaly, v)
-    initialWeights = rand(n) #fill(1.0, n)
-    initialTarray = fill((mTypical + mAnomaly) / 2, n)
+    initialWeightsDown = rand(n) #fill(1.0, n)
+    initialWeightsUp = rand(n) #fill(1.0, n)
     initialTarray = (mTypical + mAnomaly) * rand(n)
-    initialCutoff = sum(initialWeights) / 2.0
+    initialCutoff = 0.0
     # initial p values for optimization
-    p = vcat(initialWeights, initialTarray, [initialCutoff])
+    p = vcat(initialWeightsDown, initialWeightsUp, initialTarray, [initialCutoff])
     
     println(p)
 
     # Optimization using ADAM
+    lb = vcat(zeros(3n), -n*ones(1))
+    ub = vcat(ones(2n), (mTypical + mAnomaly)*ones(n),n*ones(1))
     optf = OptimizationFunction((p,x) -> loss(p,n,mTypical,mAnomaly,v), AutoEnzyme())
-    prob = OptimizationProblem(optf, p, lb=zeros(length(p)), ub=vcat(ones(n),
-    	(mTypical + mAnomaly)*ones(n),n*ones(1)))
-    result = solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(), maxiters=20000)
+    prob = OptimizationProblem(optf, p, lb=lb, ub=ub)
+    result = solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(), maxiters=50000)
     #prob = OptimizationProblem(optf, p)
 	#result = solve(prob, NelderMead(), maxiters=5000)
 
@@ -30,36 +31,42 @@ end
 
 # Objective function for optimization
 function loss(p, n, mTypical, mAnomaly, v)
-    wvals = p[1:n]
-    tarray = p[n+1:2*n]
-    cutoff = p[2*n+1]
+    wdown = p[1:n]		# typical
+    wup = p[n+1:2n]		# anomaly
+    tarray = p[2n+1:3*n]
+    cutoff = p[3*n+1]
 
     prob = pvals(tarray, mTypical, v)
-    pmf = getPMF(wvals, prob)
+    pmf = getPMF(wdown, wup, prob)
     cmf = getCMF(pmf)
     cdf = getCDF(cmf)
     FPR = 1 - cdf(cutoff)
 
     prob = pvals(tarray, mAnomaly, v)
-    pmf = getPMF(wvals, prob)
+    pmf = getPMF(wdown, wup, prob)
     cmf = getCMF(pmf)
     cdf = getCDF(cmf)
     FNR = cdf(cutoff)
     
     #println(FPR+FNR)
 
-    return FPR + FNR
+    #return FPR + FNR
+    return -F1(FNR, FPR; P_actual=0.1, N_actual=0.9)
 end
 
-# Function to get PMF
-function getPMF(w, p)
+# Function to get PMF, convolution
+# For each sensor, update pmf by splitting current prob mass into two new
+# components, one component for if sensor reports typical input and one
+# for report of anomaly, with weighting down for typical and up for anomaly
+function getPMF(wdown, wup, p)
     pmf = Dict(0 => 1.0)  # Initial PMF, all probability at 0
 
-    for i in 1:length(w)
+    for i in 1:length(wdown)
         newPMF = Dict{Float64, Float64}()
         for (currentSum, prob) in pmf
-            newPMF[currentSum] = get(newPMF, currentSum, 0.0) + (1 - p[i]) * prob
-            newSum = currentSum + w[i]
+        	newSum = currentSum - wdown[i]
+            newPMF[newSum] = get(newPMF, newSum, 0.0) + (1 - p[i]) * prob
+            newSum = currentSum + wup[i]
             newPMF[newSum] = get(newPMF, newSum, 0.0) + p[i] * prob
         end
         pmf = newPMF
@@ -90,6 +97,22 @@ function getCDF(cmf)
         end
     end
     return cdf
+end
+
+# Calculate F1, which is model accuracy
+function F1(FNR, FPR; P_actual=0.5, N_actual=0.5)
+    # Calculate TP, FN, FP
+    TP = (1 - FNR) * P_actual
+    FN = FNR * P_actual
+    FP = FPR * N_actual
+    
+    # Calculate precision and recall
+    precision = TP / (TP + FP)
+    recall = TP / (TP + FN)
+    
+    # Calculate F1 score
+    F1 = 2 * (precision * recall) / (precision + recall)
+    return (F1 === NaN) ? 0.0 : F1
 end
 
 # Response function
