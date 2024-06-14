@@ -117,6 +117,7 @@ end
 
 # Response function
 Response(t, m, v) = 1 - cdf(Normal(m, v), t)
+#Response(t, m, v) = 1 - cdf(Frechet(m, v), t)
 
 # pvals function
 pvals(tarray, m, v) = [Response(t, m, v) for t in tarray]
