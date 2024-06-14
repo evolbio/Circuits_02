@@ -1,6 +1,6 @@
 module MultiSensor
 using Distributions, Optimization, OptimizationOptimisers, ReverseDiff, Enzyme,
-	DataInterpolations, OptimizationOptimJL, DataStructures
+	DataInterpolations, OptimizationOptimJL, DataStructures, OptimizationBBO
 include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
 using .MMAColors
 export multisensor
@@ -19,10 +19,13 @@ function multisensor(n, mTypical, mAnomaly, v)
 
     # Optimization using ADAM
     optf = OptimizationFunction((p,x) -> loss(p,n,mTypical,mAnomaly,v), AutoEnzyme())
-    prob = OptimizationProblem(optf, p)
-    result = solve(prob, NelderMead(), maxiters=5000)
+    prob = OptimizationProblem(optf, p, lb=zeros(length(p)), ub=vcat(ones(n),
+    	(mTypical + mAnomaly)*ones(n),n*ones(1)))
+    result = solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(), maxiters=20000)
+    #prob = OptimizationProblem(optf, p)
+	#result = solve(prob, NelderMead(), maxiters=5000)
 
-    return result.minimizer
+    return result
 end
 
 # Objective function for optimization
@@ -43,7 +46,7 @@ function loss(p, n, mTypical, mAnomaly, v)
     cdf = getCDF(cmf)
     FNR = cdf(cutoff)
     
-    println(FPR+FNR)
+    #println(FPR+FNR)
 
     return FPR + FNR
 end
