@@ -1,5 +1,5 @@
 module MultiSensor
-using Distributions, Optimization, OptimizationOptimisers, ReverseDiff, Enzyme,
+using Distributions, Optimization,
 	DataInterpolations, OptimizationOptimJL, DataStructures, OptimizationBBO
 include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
 using .MMAColors
@@ -20,7 +20,7 @@ function multisensor(n, mTypical, mAnomaly, v)
     # Optimization using ADAM
     lb = vcat(zeros(3n), -n*ones(1))
     ub = vcat(ones(2n), (mTypical + mAnomaly)*ones(n),n*ones(1))
-    optf = OptimizationFunction((p,x) -> loss(p,n,mTypical,mAnomaly,v), AutoEnzyme())
+    optf = OptimizationFunction((p,x) -> loss(p,n,mTypical,mAnomaly,v), AutoForwardDiff())
     prob = OptimizationProblem(optf, p, lb=lb, ub=ub)
     result = solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(), maxiters=50000)
     #prob = OptimizationProblem(optf, p)
