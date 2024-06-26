@@ -24,13 +24,25 @@ println("Optimized Parameters: ", optimized_params)
 
 
 # Generate artificial anomaly data by random PCA mapping
-using Data
+using Data, Boost
 
 pca_model, normal_nD, anomaly_nD, normal_2D, anomaly_2D, pl = 
 		generateAnomaly(8; plot2d=true);
 pca_test(pca_model, normal_nD, normal_2D)
 
-# fix random state
+# set random state
 rstate = Xoshiro(0xa242084f5b199bea, 0x53a1df5ce28618fd, 0x89250c8d5127cb4e, 0x6b5f53c46218257b, 0xc5ed5ca8a7cca17e);
 pca_model, normal_nD, anomaly_nD, normal_2D, anomaly_2D, pl = 
 		generateAnomaly(8; plot2d=true, rstate=rstate);
+
+# oneR analysis
+n = 8;
+n_normal = 10000;
+frac_anom = 0.05;
+n_anomaly = Int(round(frac_anom*n_normal));
+pca_model, normal_nD, anomaly_nD, normal_2D, anomaly_2D, pl = 
+	generateAnomaly(n; n_normal=n_normal, n_anomaly=n_anomaly);
+data = dataMatrix(normal_nD, anomaly_nD);
+df = oneR(data)
+
+
