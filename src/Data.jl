@@ -1,50 +1,68 @@
 module Data
-using Distributions, MultivariateStats, Random, Plots, DataFrames, ROCAnalysis, MLBase
-export generateAnomaly, pca_test, dataMatrix, is_matrix
 
-# See ChaptGPT: Generate Random PCA mapping
-# First, creates random data in n dimensions, PCA map to m<n dimensions for m=2.
-# Second, creates normal and anomalous cloud of points in m dimensions.
-# Third, maps data from m dimensions to n dimensions using inverse PCA 
-# Goal: provides n dimensional normal and anomalous data that can be separated at lower dim
+using Random, Statistics, Distributions
+export generate_data
 
-function generateAnomaly(n; n_normal=200, n_anomaly=100, plot2d=false,
-			dir_normal=[3, 7, 2], dir_anom=[8, 2, 3], rstate=nothing, pr_rstate=false)
+
+# returns data with observations in rows and features in columns
+# mean_scale = 0 centers all dimensions on 0
+function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_ratio;
+			mean_scale=0.0, rstate=nothing, eta_normal=1.0, eta_anomaly=1.0)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
-		if pr_rstate println(rstate) end
+		println("rstate for generate_data:")
+		println(rstate)
 	end
 	copy!(Random.default_rng(), rstate)
-	# Generate the points in n dimensions and drop the last dimension
-	dirichlet_params = rand(1:10, n + 1)
-	high_dim_plus1 = rand(Dirichlet(dirichlet_params), 2000)
-	high_dim = high_dim_plus1[1:n, :]
 
-	# PCA on the high-dimensional points to create the inverse mapping model
-	pca_model = fit(PCA, high_dim; maxoutdim=2)
+    function random_correlation_matrix(n, eta)
+        distn = LKJ(n, eta)
+        return rand(distn)
+    end
 
-	# Generate normal and anomalous points in 3D (use 3 parameters), then drop the last dimension
-	normal_3D = rand(Dirichlet(dir_normal), n_normal)
-	normal_2D = normal_3D[1:2, :]
+    # Normal data
+    normal_corr = random_correlation_matrix(n_dimensions, eta_normal)
+    normal_mean = mean_scale * randn(n_dimensions)
+    normal_dist = MvNormal(normal_mean, normal_corr)
 
-	anomaly_3D = rand(Dirichlet(dir_anom), n_anomaly)
-	anomaly_2D = anomaly_3D[1:2, :]
+    # Anomaly data
+    anomaly_corrs = [random_correlation_matrix(n_dimensions, eta_anomaly) for _ in 1:n_anomaly_processes]
+    anomaly_dists = [MvNormal(mean_scale * randn(n_dimensions), corr) for corr in anomaly_corrs]
 
-	normal_nD = MultivariateStats.reconstruct(pca_model, normal_2D)
-	anomaly_nD = MultivariateStats.reconstruct(pca_model, anomaly_2D)
+    # Generate data
+    n_anomaly = round(Int, n_samples * anomaly_ratio)
+    n_normal = n_samples - n_anomaly
 
-	pl = nothing
-	if plot2d
-		pl = scatter(normal_2D[1, :], normal_2D[2, :], color=:blue, label="Normal")
-		scatter!(anomaly_2D[1, :], anomaly_2D[2, :], color=:red, label="Anomalous")
-		plot!(title="2D Points", xlabel="X1", ylabel="X2")
-		display(pl)
-	end
-	
-	return pca_model, normal_nD, anomaly_nD, normal_2D, anomaly_2D, pl
+    X_normal = rand(normal_dist, n_normal)
+    X_anomaly = hcat([rand(dist, round(Int, n_anomaly / n_anomaly_processes)) for dist in anomaly_dists]...)
+
+    # Ensure X_anomaly has exactly n_anomaly columns
+    if size(X_anomaly, 2) < n_anomaly
+        X_anomaly = hcat(X_anomaly, rand(anomaly_dists[end], n_anomaly - size(X_anomaly, 2)))
+    elseif size(X_anomaly, 2) > n_anomaly
+        X_anomaly = X_anomaly[:, 1:n_anomaly]
+    end
+
+   	X = hcat(X_normal, X_anomaly)
+	y = vcat(falses(n_normal), trues(n_anomaly))
+
+    return X', y, normal_corr, anomaly_corrs
 end
 
-pca_test(pca_model, input, target) = target ≈ predict(pca_model, input)
+digitize_matrix(X) = X .>= 0
+
+# threshold for digitizing, one threshold for each row
+# matrix has features in rows and obs in columns
+function digitize_matrix(X, thresholds)
+	@assert is_matrix(X)
+	@assert size(X)[1] == size(thresholds)[1]
+    r, c = size(X)
+    bits = BitArray(undef, r, c)
+    for i in 1:r
+        bits[i,:] .= X[i,:] .>= thresholds[i]
+    end
+    return bits
+end
 
 is_matrix(obj) = isa(obj, AbstractMatrix) && ndims(obj) == 2
 

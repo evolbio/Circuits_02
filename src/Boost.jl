@@ -10,6 +10,8 @@ export oneR_analysis, oneR_analysis_old
 using ROCAnalysis
 using DataFrames
 
+# takes data with features in rows and observations in columns
+# last row has labels for normal (0) or anomaly (1)
 function oneR_analysis(data_matrix)
     n_features = size(data_matrix, 1) - 1
     labels = data_matrix[end, :]
@@ -109,16 +111,18 @@ function tpr_fpr(roc_nums)
 end
 
 # Function to plot ROC curves for all features
+# Features in rows, obs in columns, last row as normal/anomaly labels as 0/1
 function plot_all_roc_curves(data_matrix)
     labels = data_matrix[end, :]
+    features = size(data_matrix)[1]-1
 
     # Create a grid layout for 8 ROC curves
-    plot_layout = @layout [grid(4, 2)]
+    plot_layout = @layout [grid(round(Int,features/2), 2)]
 
     # Create a plot object with the specified layout
     p = plot(layout = plot_layout, size = (800, 1200))
 
-    for i in 1:8
+    for i in 1:features
         feature = data_matrix[i, :]
 
         # Compute ROC curve
@@ -129,40 +133,12 @@ function plot_all_roc_curves(data_matrix)
         fpr = [false_positive_rate(roc_num) for roc_num in roc_instances]
 
         # Plot ROC curve for the current feature
-        plot!(p, fpr, tpr, label="Feature $i", xlabel="False Positive Rate", ylabel="True Positive Rate", title="Feature $i", subplot=i)
+        plot!(p, fpr, tpr, label="Feature $i", xlabel="False Positive Rate",
+        		ylabel="True Positive Rate", title="Feature $i", subplot=i)
         plot!(p, [0, 1], [0, 1], linestyle=:dash, label="Random Classifier", subplot=i)
     end
 
     display(p)
-end
-
-function plot_roc_curves(data_matrix, results)
-    n_features = size(data_matrix, 1) - 1
-    labels = data_matrix[end, :]
-    
-    # Create a grid of subplots for ROC curves
-    plot_grid = plot(layout=(2, 4), legend=false, size=(800, 400))
-    
-    for i in 1:n_features
-        feature = data_matrix[i, :]
-        auc = results[i, :AUC]
-        
-        # Compute ROC curve using true labels and predicted scores
-        predicted_scores = feature
-        roc_curve = ROCAnalysis.roc(labels, predicted_scores)
-        
-        # Extract false positive rates and true positive rates from the ROC curve
-        fprs = roc_curve.fps
-        tprs = roc_curve.tps
-        
-        # Plot the ROC curve in the corresponding subplot
-        plot!(plot_grid[i], fprs, tprs,
-              title="Feature $i (AUC = $(round(auc, digits=3)))",
-              xlabel="False Positive Rate", ylabel="True Positive Rate")
-    end
-    
-    # Display the plot grid
-    display(plot_grid)
 end
 
 end # module Boost
