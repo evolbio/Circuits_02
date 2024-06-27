@@ -1,14 +1,64 @@
 module Boost
 include("Data.jl")
 using .Data
-using Plots, DataFrames, MLBase, ROCAnalysis
-export oneR_analysis, oneR_analysis_old
+using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics
+export oneR_analysis, xgb_analysis
 
-# Study boosted decision trees
-# Use artificial data from Data.jl
-
-using ROCAnalysis
-using DataFrames
+# samples in rows, features in cols
+function xgb_analysis(X, y; rstate=nothing)
+	if rstate === nothing
+		rstate = copy(Random.default_rng())
+		println(rstate)
+	end
+	copy!(Random.default_rng(), rstate)
+	
+	# Create a DataFrame for X to preserve feature names
+	df = DataFrame(X, :auto)
+	
+	# Shuffle and split the data
+	df, y = shuffleobs((df, y))
+	(train_df, train_y), (test_df, test_y) = splitobs((df, y), at = 0.7)
+	
+	# Convert labels to Float64 for training
+	train_y = Float64.(train_y)
+	
+	# Convert DataFrames to DMatrix
+	dtrain = DMatrix(train_df, label=train_y)
+	dtest = DMatrix(test_df, label=test_y)
+	
+	# Set XGBoost parameters
+	params = Dict(
+		"max_depth" => 6,
+		"eta" => 0.3,
+		"objective" => "binary:logistic",
+		"eval_metric" => "logloss"
+	)
+	
+	# Create and train the model
+	bst = xgboost(dtrain, num_round=100, params=params)
+	
+	# Make predictions on the test set
+	y_pred = XGBoost.predict(bst, dtest)
+	y_pred_binary = y_pred .> 0.5
+	
+	# Calculate metrics
+	accuracy = mean(y_pred_binary .== test_y)
+	tp = sum(y_pred_binary .& test_y)
+	fp = sum(y_pred_binary .& .!test_y)
+	fn = sum(.!y_pred_binary .& test_y)
+	recall_value = tp / (tp + fn)
+	precision_value = tp / (tp + fp)
+	f1_score = 2 * (precision_value * recall_value) / (precision_value + recall_value)
+	
+	# Print results
+	println("Accuracy: ", round(accuracy, digits=4))
+	println("Recall: ", round(recall_value, digits=4))
+	println("Precision: ", round(precision_value, digits=4))
+	println("F1 Score: ", round(f1_score, digits=4))
+	
+	# Display feature importance
+	feature_importance = importance(bst)
+end
 
 # takes data with features in rows and observations in columns
 # last row has labels for normal (0) or anomaly (1)
@@ -62,45 +112,6 @@ function f1score2(true_labels, predicted_labels)
     recall = tp / (tp + fn)
     
     return 2 * (precision * recall) / (precision + recall)
-end
-
-# Function to perform OneR analysis and find the best threshold for F1 score
-function oneR_analysis_old(data_matrix)
-    n_features = size(data_matrix, 1) - 1
-    labels = data_matrix[end, :]  # Keep labels as Float64 for ROCAnalysis
-    int_labels = Int.(data_matrix[end, :])  # Convert labels to Int for MLBase
-    results = DataFrame(feature = Int[], AUC = Float64[], F1 = Float64[], Best_Threshold = Float64[])
-
-    for i in 1:n_features
-        feature = data_matrix[i, :]
-
-        # Compute AUC by evaluating the ROC curve with ROCAnalysis
-        roc_curve = ROCAnalysis.roc(labels, feature)
-        auc = ROCAnalysis.auc(roc_curve)
-
-        # Generate and sort thresholds
-        thresholds = sort(unique(feature))
-
-        # Compute ROC instances for multiple thresholds with MLBase
-        roc_instances = MLBase.roc(int_labels, feature, thresholds)
-
-        # Find the best threshold for maximizing F1 score
-        best_f1 = 0.0
-        best_threshold = 0.0
-
-        for (j, roc_num) in enumerate(roc_instances)
-            f1 = f1score(roc_num)
-            if f1 > best_f1
-                best_f1 = f1
-                best_threshold = thresholds[j]
-            end
-        end
-
-        # Store results
-        push!(results, (i, auc, best_f1, best_threshold))
-    end
-
-    return results
 end
 
 # Function to compute TPR and FPR from ROCNums

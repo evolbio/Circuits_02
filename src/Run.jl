@@ -30,5 +30,8 @@ X,y,nc,ac=generate_data(10000,10,2,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
+# XGBoost analysis
+xgb_analysis(X,y)
+
 
 
