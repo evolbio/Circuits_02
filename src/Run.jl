@@ -26,12 +26,15 @@ println("Optimized Parameters: ", optimized_params)
 # Generate artificial data and do oneR analysis
 using Data, Boost
 
+# OneR analysis
 X,y,nc,ac=generate_data(10000,10,2,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
 # XGBoost analysis
-xgb_analysis(X,y)
+# generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
+X,y,nc,ac=generate_data(10000,10,2,0.1;mean_scale=0.2);
+bst, dtest = xgb_analysis(X,y);
 
 
 

@@ -1,7 +1,7 @@
 module Data
 
 using Random, Statistics, Distributions
-export generate_data
+export generate_data, digitize_matrix
 
 
 # returns data with observations in rows and features in columns

@@ -26,16 +26,10 @@ function xgb_analysis(X, y; rstate=nothing)
 	dtrain = DMatrix(train_df, label=train_y)
 	dtest = DMatrix(test_df, label=test_y)
 	
-	# Set XGBoost parameters
-	params = Dict(
-		"max_depth" => 6,
-		"eta" => 0.3,
-		"objective" => "binary:logistic",
-		"eval_metric" => "logloss"
-	)
-	
 	# Create and train the model
-	bst = xgboost(dtrain, num_round=100, params=params)
+	# params as here: https://xgboost.readthedocs.io/en/stable/parameter.html
+	bst = xgboost(dtrain, num_round=100, max_depth=6, eta=0.3, objective="binary:logistic",
+					eval_metric="logloss")
 	
 	# Make predictions on the test set
 	y_pred = XGBoost.predict(bst, dtest)
@@ -58,6 +52,8 @@ function xgb_analysis(X, y; rstate=nothing)
 	
 	# Display feature importance
 	feature_importance = importance(bst)
+	display(feature_importance)
+	return bst, dtest
 end
 
 # takes data with features in rows and observations in columns
