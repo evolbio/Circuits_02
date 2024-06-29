@@ -33,8 +33,8 @@ Boost.plot_all_roc_curves(hcat(X,y)')
 
 # XGBoost analysis
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
-X,y,nc,ac=generate_data(10000,10,2,0.1;mean_scale=0.2);
-bst, dtest = xgb_analysis(X,y);
+X,y,nm,nc,ac=generate_data(100000,20,20,0.1;mean_scale=0.2);
+bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
 
 
 

@@ -5,7 +5,7 @@ using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Stat
 export oneR_analysis, xgb_analysis
 
 # samples in rows, features in cols
-function xgb_analysis(X, y; rstate=nothing)
+function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		println(rstate)
@@ -28,7 +28,7 @@ function xgb_analysis(X, y; rstate=nothing)
 	
 	# Create and train the model
 	# params as here: https://xgboost.readthedocs.io/en/stable/parameter.html
-	bst = xgboost(dtrain, num_round=100, max_depth=6, eta=0.3, objective="binary:logistic",
+	bst = xgboost(dtrain, num_round=trees, max_depth=depth, eta=0.3, objective="binary:logistic",
 					eval_metric="logloss")
 	
 	# Make predictions on the test set
