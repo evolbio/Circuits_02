@@ -1,8 +1,9 @@
 module Data
 
-using Random, Statistics, Distributions, StatsBase, LinearAlgebra
+using Random, Statistics, Distributions, StatsBase, LinearAlgebra, Printf
 export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
-		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p, score_p
+		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p, score_p,
+		select_top_mean_columns, vec2matrix, calculate_metrics
 
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
@@ -54,19 +55,19 @@ function pairwise_diffs_top(X, mean, corr; top=0)
     n, m = size(X)
     
     if top > 0 
-        # Create a copy of corr and set diagonal to zero
+        # Create a copy of corr and set upper triangle (including diagonal) to zero
         corr_abs = abs.(corr)
-        corr_abs[diagind(corr_abs)] .= 0
+        corr_abs[triu!(trues(size(corr_abs)))] .= 0
         
-        # Find indices of top absolute correlations (excluding diagonal)
+        # Find indices of top absolute correlations (lower triangle only)
         top_indices = partialsortperm(vec(corr_abs), 1:min(top, div(m*(m-1), 2)), rev=true)
         
         # Convert linear indices to row, col pairs
         rows = (top_indices .- 1) .% m .+ 1
         cols = (top_indices .- 1) .÷ m .+ 1
     else
-        # Generate all unique pairs, excluding diagonal (i < j to ensure uniqueness)
-        pairs = [(i, j) for i in 1:m-1 for j in i+1:m]
+        # Generate all unique pairs, lower triangle only (i > j to ensure uniqueness)
+        top_indices = pairs = [(i, j) for i in 2:m for j in 1:i-1]
         rows = first.(pairs)
         cols = last.(pairs)
     end
@@ -84,7 +85,29 @@ function pairwise_diffs_top(X, mean, corr; top=0)
         end
     end
     
-    return result
+    return result, top_indices
+end
+
+function select_top_mean_columns(X, means, k)
+    # Ensure means is a vector
+    means = vec(means)
+
+    # Ensure k is not larger than the number of columns
+    k = min(k, size(X, 2))
+    
+    # Get the indices of columns sorted by absolute mean values in descending order
+    sorted_indices = sortperm(abs.(means), rev=true)
+    
+    # Select the top k indices
+    top_k_indices = sorted_indices[1:k]
+    
+    # Select the corresponding columns from X
+    X_selected = X[:, top_k_indices]
+    
+    # Also return the corresponding means if needed
+    means_selected = means[top_k_indices]
+    
+    return X_selected, means_selected, top_k_indices
 end
 
 # return indices of below diagonal elements sorted by absolute values
@@ -105,10 +128,11 @@ mean_corr(X) = return mean(X, dims=1), cor(X)
 
 # size(data) = (n,m) for n obs and m variables, size(col_means) = (1,m) a row vector as matrix
 function center_data(data, col_means)
+  c_means = vec(col_means)
   n, m = size(data)
   centered_data = zeros(n, m) 
   for col in 1:m
-    centered_data[:, col] = data[:, col] .- col_means[1, col]
+    centered_data[:, col] = data[:, col] .- c_means[col]
   end
   return centered_data
 end
@@ -156,6 +180,35 @@ function score_p(ecdf, X, p, k; use_abs=true)
 	return sum(score_vec)/length(score_vec)
 end
 
+function calculate_metrics(TP, TN, FP, FN; display=false)
+  """
+  Calculates precision, accuracy, recall, and F1 score from confusion matrix counts.
+
+  Args:
+    TP: True Positives
+    TN: True Negatives
+    FP: False Positives
+    FN: False Negatives
+
+  Returns:
+    A tuple containing: (precision, accuracy, recall, f1)
+  """
+
+  precision = TP / (TP + FP)
+  accuracy = (TP + TN) / (TP + TN + FP + FN)
+  recall = TP / (TP + FN)
+  f1 = 2 * (precision * recall) / (precision + recall)
+  
+  if display
+  	@printf("%11s%5.3f\n", "Precision: ", precision)
+  	@printf("%11s%5.3f\n", "Accuracy: ", accuracy)
+  	@printf("%11s%5.3f\n", "Recall: ", recall)
+  	@printf("%11s%5.3f\n", "F1 Score: ", f1)
+  end
+
+  return precision, accuracy, recall, f1
+end
+
 digitize_matrix(X) = X .>= 0
 
 # threshold for digitizing, one threshold for each row
@@ -171,6 +224,7 @@ function digitize_matrix(X, thresholds)
     return bits
 end
 
+vec2matrix(x) = reshape(x, (length(x), 1))
 is_matrix(obj) = isa(obj, AbstractMatrix) && ndims(obj) == 2
 
 function dataMatrix(normal, anomaly)

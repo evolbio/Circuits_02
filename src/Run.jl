@@ -63,7 +63,7 @@ score_vec = score_p(mcdf_abs, Xn0, 0.05, 3)
 score_vec = score_p(mcdf_abs, Xa0, 0.05, 3)
 
 # analyze pairwise correlations
-Xd = pairwise_diffs_top(X, means, corr; top=20);
+Xd, t_idx = pairwise_diffs_top(X, means, corr; top=20);
 Xdn=normal_data(Xd,y);							# get normal obs, drop anomalies
 means, corr = mean_corr(Xdn);					# values for normal obs
 Xdn0 = center_data(Xdn, means);					# centers data in each col to have zero mean
@@ -74,4 +74,33 @@ Xda0 = center_data(Xda, means);
 
 score_vec = score_p(mcdf_abs, Xdn0, 0.05, 3)
 score_vec = score_p(mcdf_abs, Xda0, 0.05, 3)
+
+# combine top means and top correlation pairs into single ensemble
+X,y,nm,nc,ac=generate_data(100000,20,20,0.1; mean_scale=1.0);
+Xn=normal_data(X,y);							# get normal obs, drop anomalies
+means, corr = mean_corr(Xn);					# values for normal obs
+Xnm,m_means,m_idx=select_top_mean_columns(Xn, means, 5);	# get top 5 cols w/top deviations of mean from 0
+Xnm0=center_data(Xnm, m_means);
+
+Xd, t_idx = pairwise_diffs_top(X, means, corr; top=5);
+Xdn=normal_data(Xd,y);							# get normal obs, drop anomalies
+Xnc=hcat(Xnm0,Xdn);
+mcdf_abs = ecdf_matrix(Xnc);					# empirical cdf of abs values for combined matrices
+
+Xda=anomaly_data(Xd,y);
+Xa=anomaly_data(X,y);
+Xam=Xa[:,m_idx];
+Xam0=center_data(Xam, m_means);
+Xac=hcat(Xam0,Xda);
+
+score_vec = score_p(mcdf_abs, Xnc, 0.05, 3)
+fp = score_vec * size(Xnc,1);
+tn = size(Xnc,1) - fp;
+score_vec = score_p(mcdf_abs, Xac, 0.05, 3)
+tp = score_vec * size(Xac,1);
+fn = size(Xac,1) - tp;
+calculate_metrics(tp,tn,fp,fn; display=true);
+
+# BOOST ON SINGLE COLUMNS TO GET BEST THRESHOLD FOR EACH COLUMN, THEN SCORE AS 0/1. THEN LOOK AT VARIOUS WAYS TO AGGREGATE 0/1 SCORES FOR EACH COLUMN, FOR EXAMPLE, THRESHOLD ON SUM. BUT ALSO CONSIDER RUNNING DECISION TREE ON 0/1 VALUES OR AUTOENCODE TO GET FEATURES, ETC.
+
 
