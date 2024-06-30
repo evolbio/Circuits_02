@@ -180,19 +180,31 @@ function score_p(ecdf, X, p, k; use_abs=true)
 	return sum(score_vec)/length(score_vec)
 end
 
-function calculate_metrics(TP, TN, FP, FN; display=false)
-  """
+"""
   Calculates precision, accuracy, recall, and F1 score from confusion matrix counts.
 
-  Args:
+  Args:\n
     TP: True Positives
     TN: True Negatives
     FP: False Positives
     FN: False Negatives
+    
+    Accuracy: The proportion of all predictions (both positive and negative)
+    that were correct. It's calculated as
+    (True Positives + True Negatives) / Total Predictions.
+
+	Recall (also known as Sensitivity or True Positive Rate): The proportion
+	of actual positive cases that were correctly identified. It's calculated
+	as True Positives / (True Positives + False Negatives).
+
+	Precision: The proportion of predicted positive cases that are actually
+	positive. It's calculated as
+	True Positives / (True Positives + False Positives).
 
   Returns:
     A tuple containing: (precision, accuracy, recall, f1)
-  """
+"""
+function calculate_metrics(TP, TN, FP, FN; display=false)
 
   precision = TP / (TP + FP)
   accuracy = (TP + TN) / (TP + TN + FP + FN)
