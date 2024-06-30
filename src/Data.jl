@@ -1,8 +1,8 @@
 module Data
 
-using Random, Statistics, Distributions, StatsBase
-export generate_data, digitize_matrix, pairwise_diffs, pairwise_diffs_top
-
+using Random, Statistics, Distributions, StatsBase, LinearAlgebra
+export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
+		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p, score_p
 
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
@@ -49,41 +49,32 @@ function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_rat
     return X', y, normal_mean, normal_corr, anomaly_corrs
 end
 
-# take data matrix calc pairwise diffs based on normal mean and corr matrix
-function pairwise_diffs(X, mean, corr)
-  n, m = size(X)
-  result = zeros(n, Int(m * (m - 1) / 2))
-  col_idx = 1
-  for i in 1:m-1
-    for j in i+1:m
-      if corr[i, j] > 0
-        result[:, col_idx] = (X[:, i] .- mean[i]) .- (X[:, j] .- mean[j])
-      else
-        result[:, col_idx] = (X[:, i] .- mean[i]) .+ (X[:, j] .- mean[j])
-      end
-      col_idx += 1
-    end
-  end
-  return result
-end
-
 # pick top correlated pairs, top is number of pairs, 0 is all
 function pairwise_diffs_top(X, mean, corr; top=0)
     n, m = size(X)
-
+    
     if top > 0 
+        # Create a copy of corr and set diagonal to zero
+        corr_abs = abs.(corr)
+        corr_abs[diagind(corr_abs)] .= 0
+        
         # Find indices of top absolute correlations (excluding diagonal)
-        top_indices = sortperm(abs.(corr - I(m)), rev=true)[1:top]  
+        top_indices = partialsortperm(vec(corr_abs), 1:min(top, div(m*(m-1), 2)), rev=true)
+        
         # Convert linear indices to row, col pairs
-        rows = ((top_indices .- 1) .% m) .+ 1
-        cols = floor.((top_indices .- 1) ./ m) .+ 1
+        rows = (top_indices .- 1) .% m .+ 1
+        cols = (top_indices .- 1) .÷ m .+ 1
     else
-        # Correct way to generate all unique pairs:
-        rows = [i for i in 1:m-1 for j in i+1:m]
-        cols = [j for i in 1:m-1 for j in i+1:m] 
+        # Generate all unique pairs, excluding diagonal (i < j to ensure uniqueness)
+        pairs = [(i, j) for i in 1:m-1 for j in i+1:m]
+        rows = first.(pairs)
+        cols = last.(pairs)
     end
-
-    result = zeros(n, length(rows)) 
+    
+    # Preallocate the result matrix
+    result = zeros(n, length(rows))
+    
+    # Compute differences
     for k in 1:length(rows)
         i, j = rows[k], cols[k]
         if corr[i, j] > 0
@@ -92,7 +83,7 @@ function pairwise_diffs_top(X, mean, corr; top=0)
             result[:, k] = (X[:, i] .- mean[i]) .+ (X[:, j] .- mean[j])
         end
     end
-
+    
     return result
 end
 
@@ -107,14 +98,19 @@ end
 # for matrix X and vector y of 0/1 labels, return a new matrix in which all rows
 # have an associated 0 label
 normal_data(X,y) = X[findall(y .== 0), :]
+anomaly_data(X,y) = X[findall(y .== 1), :]
 
-# for matrix X with obs in rows and features in cols and vector y of 0/1 labels
-# select only rows with label == 0, then return mean vec, corr matrix
-function normal_mean_corr(X,y)
-	Xn = normal_data(X,y)
-	means = mean(Xn, dims=1)
-	corr = cor(Xn)
-	return means, corr
+# for matrix X with only normal data (use normal_data()), return mean vec and corr matrix
+mean_corr(X) = return mean(X, dims=1), cor(X)
+
+# size(data) = (n,m) for n obs and m variables, size(col_means) = (1,m) a row vector as matrix
+function center_data(data, col_means)
+  n, m = size(data)
+  centered_data = zeros(n, m) 
+  for col in 1:m
+    centered_data[:, col] = data[:, col] .- col_means[1, col]
+  end
+  return centered_data
 end
 
 # get empirical cdf by col, use_abs for cdf of absolute values
@@ -127,6 +123,37 @@ function ecdf_matrix(data; use_abs=true)
   end
 
   return eCDF_vector
+end
+
+function median_p(ecdf, X; use_abs=true)
+	n,m = size(X)
+	@assert length(ecdf) == m		# one ecdf for each column
+	median_vec = zeros(n)
+	for i in 1:n
+		feature_vec = zeros(m)
+		x = use_abs ? abs.(X[i,:]) : X[i,:]
+		for j in 1:m
+			feature_vec[j] = 1-ecdf[j](x[j])
+		end
+		median_vec[i] = median(feature_vec)
+	end
+	return median_vec
+end
+
+# If a row has >=k p values <= p, then 1, otherwise 0
+function score_p(ecdf, X, p, k; use_abs=true)
+	n,m = size(X)
+	@assert length(ecdf) == m		# one ecdf for each column
+	score_vec = zeros(n)
+	for i in 1:n
+		feature_vec = zeros(m)
+		x = use_abs ? abs.(X[i,:]) : X[i,:]
+		for j in 1:m
+			feature_vec[j] = 1-ecdf[j](x[j]) <= p ? 1 : 0
+		end
+		score_vec[i] = sum(feature_vec) >= k ? 1 : 0
+	end
+	return sum(score_vec)/length(score_vec)
 end
 
 digitize_matrix(X) = X .>= 0

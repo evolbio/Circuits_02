@@ -5,7 +5,13 @@ include("MultiSensor.jl")
 using .MultiSensor
 include("Data.jl")
 using .Data
-export temporal, multisensor
+include("Surprisal.jl")
+using .Surprisal
+include("Boost.jl")
+using .Boost
+export temporal, multisensor, generate_data, digitize_matrix, pairwise_diffs_top,
+		mean_corr, normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p, score_p,
+		oneR_analysis, xgb_analysis, surprisal_sum, find_tail_indices
 
 
 end # module Anomaly
