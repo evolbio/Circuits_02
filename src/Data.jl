@@ -1,13 +1,15 @@
 module Data
 
-using Random, Statistics, Distributions, StatsBase, LinearAlgebra, Printf
+using Random, Statistics, Distributions, StatsBase, LinearAlgebra, Printf,
+		Optimization, OptimizationOptimJL
 export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
-		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p, score_p,
-		select_top_mean_columns, vec2matrix, calculate_metrics
+		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p,
+		select_top_mean_columns, vec2matrix, calculate_metrics, get_metrics,
+		optimize_thresholds
 
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
-function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_ratio;
+function generate_data(n_samples, n_dimensions, anomaly_ratio;
 			mean_scale=0.0, rstate=nothing, eta_normal=1.0, eta_anomaly=1.0)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
@@ -21,6 +23,10 @@ function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_rat
         return rand(distn)
     end
 
+    n_anomaly = round(Int, n_samples * anomaly_ratio)
+    n_normal = n_samples - n_anomaly
+    n_anomaly_processes = n_anomaly
+
     # Normal data
     normal_corr = random_correlation_matrix(n_dimensions, eta_normal)
     normal_mean = mean_scale * randn(n_dimensions)
@@ -31,9 +37,6 @@ function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_rat
     anomaly_dists = [MvNormal(mean_scale * randn(n_dimensions), corr) for corr in anomaly_corrs]
 
     # Generate data
-    n_anomaly = round(Int, n_samples * anomaly_ratio)
-    n_normal = n_samples - n_anomaly
-
     X_normal = rand(normal_dist, n_normal)
     X_anomaly = hcat([rand(dist, round(Int, n_anomaly / n_anomaly_processes)) for dist in anomaly_dists]...)
 
@@ -47,7 +50,7 @@ function generate_data(n_samples, n_dimensions, n_anomaly_processes, anomaly_rat
    	X = hcat(X_normal, X_anomaly)
 	y = vcat(falses(n_normal), trues(n_anomaly))
 
-    return X', y, normal_mean, normal_corr, anomaly_corrs
+    return X', y, normal_mean, normal_corr
 end
 
 # pick top correlated pairs, top is number of pairs, 0 is all
@@ -164,22 +167,6 @@ function median_p(ecdf, X; use_abs=true)
 	return median_vec
 end
 
-# If a row has >=k p values <= p, then 1, otherwise 0
-function score_p(ecdf, X, p, k; use_abs=true)
-	n,m = size(X)
-	@assert length(ecdf) == m		# one ecdf for each column
-	score_vec = zeros(n)
-	for i in 1:n
-		feature_vec = zeros(m)
-		x = use_abs ? abs.(X[i,:]) : X[i,:]
-		for j in 1:m
-			feature_vec[j] = 1-ecdf[j](x[j]) <= p ? 1 : 0
-		end
-		score_vec[i] = sum(feature_vec) >= k ? 1 : 0
-	end
-	return sum(score_vec)/length(score_vec)
-end
-
 """
   Calculates precision, accuracy, recall, and F1 score from confusion matrix counts.
 
@@ -246,6 +233,82 @@ function dataMatrix(normal, anomaly)
 	normal0 = vcat(normal,zeros(size(normal,2))')  
 	anomaly1 = vcat(anomaly,ones(size(anomaly,2))')
 	return hcat(normal0,anomaly1)
+end
+
+
+
+############# test #########
+
+# If a row has >=k p values <= p, then 1, otherwise 0
+function score_p(ecdf, X, p, k; use_abs=true)
+	n,m = size(X)
+	@assert length(ecdf) == m		# one ecdf for each column
+	score_vec = zeros(n)
+	for i in 1:n
+		feature_vec = zeros(m)
+		x = use_abs ? abs.(X[i,:]) : X[i,:]
+		for j in 1:m
+			feature_vec[j] = 1-ecdf[j](x[j]) <= p[j] ? 1 : 0
+		end
+		score_vec[i] = sum(feature_vec) >= k ? 1 : 0
+	end
+	return sum(score_vec)/length(score_vec)
+end
+
+function get_metrics(mcdf_abs, Xnc, Xac, thresholds, aggr_threshold; display=false)
+	score_vec = score_p(mcdf_abs, Xnc, thresholds, aggr_threshold)
+	fp = score_vec * size(Xnc,1);
+	tn = size(Xnc,1) - fp;
+	score_vec = score_p(mcdf_abs, Xac, thresholds, aggr_threshold)
+	tp = score_vec * size(Xac,1);
+	fn = size(Xac,1) - tp;
+	calculate_metrics(tp,tn,fp,fn; display=display);
+end
+
+function optimize_thresholds(Xnc, Xac, mcdf_abs; rstate=nothing)
+	if rstate === nothing
+		rstate = copy(Random.default_rng())
+		println("rstate for generate_data:")
+		println(rstate)
+	end
+	copy!(Random.default_rng(), rstate)
+    # Split data into train and test sets
+    train_ratio = 0.7
+    Xncs = Xnc[shuffle(1:end),:]
+    Xacs = Xac[shuffle(1:end),:]
+
+    Xnc_train = Xncs[1:floor(Int, train_ratio*size(Xnc,1)), :]
+    Xnc_test = Xncs[floor(Int, train_ratio*size(Xnc,1))+1:end, :]
+    
+    Xac_train = Xacs[1:floor(Int, train_ratio*size(Xac,1)), :]
+    Xac_test = Xacs[floor(Int, train_ratio*size(Xac,1))+1:end, :]
+
+    # Objective function to maximize F1 score
+    function objective(params)
+       	# We use negative F1 because Optim minimizes the objective
+        _, _, _, f1 = get_metrics(mcdf_abs, Xnc_train, Xac_train, params[1:end-1], round(Int, params[end]))
+        return -f1
+    end
+
+    # Initial guess
+    initial_guess = vcat(fill(0.05,size(Xnc,2)), size(Xnc, 2) / 3)
+
+    # Optimization
+    result = optimize(objective, initial_guess, NelderMead())
+
+    # Extract best parameters
+    opt = Optim.minimizer(result)
+    best_thresholds, best_aggr_threshold = opt[1:end-1], opt[end]
+    best_aggr_threshold = round(Int, best_aggr_threshold)
+
+    # Evaluate on test set
+    precision, accuracy, recall, f1 = get_metrics(mcdf_abs, Xnc_test, Xac_test,
+    		best_thresholds, best_aggr_threshold, display=true)
+
+    println("Best thresholds: ", best_thresholds)
+    println("Best aggregate threshold: ", best_aggr_threshold)
+
+    return best_thresholds, best_aggr_threshold, precision, accuracy, recall, f1
 end
 
 end # module Data

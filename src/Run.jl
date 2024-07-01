@@ -27,17 +27,17 @@ println("Optimized Parameters: ", optimized_params)
 using Data, Boost, Surprisal
 
 # OneR analysis
-X,y,nc,ac=generate_data(10000,10,2,0.1;mean_scale=0.2);
+X,y,nc=generate_data(10000,10,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
 # XGBoost analysis
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
-X,y,nm,nc,ac=generate_data(100000,20,20,0.1; mean_scale=0.2);
+X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.2);
 bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
 
 # Surprisal analysis of means, abs use assumes symmetric distns; n rows as obs, m cols as variables
-X,y,nm,nc,ac=generate_data(100000,20,20,0.1; mean_scale=0.5);
+X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.5);
 #bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
 Xn=normal_data(X,y);							# get normal obs, drop anomalies
 means, corr = mean_corr(Xn);					# values for normal obs
@@ -59,8 +59,8 @@ median_vec = median_p(mcdf_abs, Xa0);
 median_vec_N = median_p(mcdf_abs, Xn0);
 
 # more typical ensemble method based on number of individual features that are significant
-score_vec = score_p(mcdf_abs, Xn0, 0.05, 3)
-score_vec = score_p(mcdf_abs, Xa0, 0.05, 3)
+score_vec = score_p(mcdf_abs, Xn0, fill(0.05,size(Xn0,2)), 3)
+score_vec = score_p(mcdf_abs, Xa0, fill(0.05,size(Xa0,2)), 3)
 
 # analyze pairwise correlations
 Xd, t_idx = pairwise_diffs_top(X, means, corr; top=20);
@@ -72,17 +72,17 @@ mcdf_abs = ecdf_matrix(Xdn0);					# empirical cdf of abs values
 Xda = anomaly_data(Xd,y);
 Xda0 = center_data(Xda, means);
 
-score_vec = score_p(mcdf_abs, Xdn0, 0.05, 3)
-score_vec = score_p(mcdf_abs, Xda0, 0.05, 3)
+score_vec = score_p(mcdf_abs, Xdn0, fill(0.05,size(Xdn0,2)), 3)
+score_vec = score_p(mcdf_abs, Xda0, fill(0.05,size(Xda0,2)), 3)
 
 # combine top means and top correlation pairs into single ensemble
-X,y,nm,nc,ac=generate_data(100000,20,20,0.1; mean_scale=1.0);
+X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.5);
 Xn=normal_data(X,y);							# get normal obs, drop anomalies
 means, corr = mean_corr(Xn);					# values for normal obs
-Xnm,m_means,m_idx=select_top_mean_columns(Xn, means, 5);	# get top 5 cols w/top deviations of mean from 0
+Xnm,m_means,m_idx=select_top_mean_columns(Xn, means, 9);	# get top 5 cols w/top deviations of mean from 0
 Xnm0=center_data(Xnm, m_means);
 
-Xd, t_idx = pairwise_diffs_top(X, means, corr; top=5);
+Xd, t_idx = pairwise_diffs_top(X, means, corr; top=1);
 Xdn=normal_data(Xd,y);							# get normal obs, drop anomalies
 Xnc=hcat(Xnm0,Xdn);
 mcdf_abs = ecdf_matrix(Xnc);					# empirical cdf of abs values for combined matrices
@@ -93,14 +93,11 @@ Xam=Xa[:,m_idx];
 Xam0=center_data(Xam, m_means);
 Xac=hcat(Xam0,Xda);
 
-score_vec = score_p(mcdf_abs, Xnc, 0.05, 3)
-fp = score_vec * size(Xnc,1);
-tn = size(Xnc,1) - fp;
-score_vec = score_p(mcdf_abs, Xac, 0.05, 3)
-tp = score_vec * size(Xac,1);
-fn = size(Xac,1) - tp;
-calculate_metrics(tp,tn,fp,fn; display=true);
+bst, dtest = xgb_analysis(vcat(Xnc,Xac),y; trees=100, depth=6);
+best_st, best_at, precision, accuracy, recall, f1 = optimize_thresholds(Xnc, Xac, mcdf_abs);
 
-# BOOST ON SINGLE COLUMNS TO GET BEST THRESHOLD FOR EACH COLUMN, THEN SCORE AS 0/1. THEN LOOK AT VARIOUS WAYS TO AGGREGATE 0/1 SCORES FOR EACH COLUMN, FOR EXAMPLE, THRESHOLD ON SUM. BUT ALSO CONSIDER RUNNING DECISION TREE ON 0/1 VALUES OR AUTOENCODE TO GET FEATURES, ETC.
+#metr=get_metrics(mcdf_abs, Xnc, Xac, fill(0.05,size(Xnc,2)), 3; display=true);
+
+# OneR ON SINGLE COLUMNS TO GET BEST THRESHOLD FOR EACH COLUMN, THEN SCORE AS 0/1. THEN LOOK AT VARIOUS WAYS TO AGGREGATE 0/1 SCORES FOR EACH COLUMN, FOR EXAMPLE, THRESHOLD ON SUM. BUT ALSO CONSIDER RUNNING DECISION TREE ON 0/1 VALUES OR AUTOENCODE TO GET FEATURES, ETC.
 
 

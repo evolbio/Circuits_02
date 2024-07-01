@@ -1,7 +1,8 @@
 module Boost
 include("Data.jl")
 using .Data
-using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics
+using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics,
+		Base.Threads
 export oneR_analysis, xgb_analysis
 
 # samples in rows, features in cols
@@ -64,7 +65,7 @@ function oneR_analysis(data_matrix)
     int_labels = Int.(labels)
     results = DataFrame(feature = Int[], AUC = Float64[], F1 = Float64[], Best_Threshold = Float64[])
     
-    for i in 1:n_features
+    Threads.@threads for i in 1:n_features
         feature = data_matrix[i, :]
         
         # Generate thresholds based on feature values
