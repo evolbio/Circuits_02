@@ -31,10 +31,25 @@ X,y,nc=generate_data(10000,10,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
-# XGBoost analysis
+# XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
 X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.2);
 bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
+
+X,y,nm,nc=generate_data(1000000,8,0.1; mean_scale=0.9);
+bst, dtest = xgb_analysis(X,y; trees=3, depth=1);
+print_all_trees(bst)
+
+make_graphs(bst)
+
+model_dump = XGBoost.dump(bst, fmap="", with_stats=true);
+
+
+
+# Following show the information in various types of OneR analyses, always less than xgboost
+# If only information is in individual feature means, does OneR does OK. 
+# Can also pick up pairwise correlation info in modified type of OneR (see below). 
+# However, comparing to xgboost shows that much information is in broader multivariate info
 
 # Surprisal analysis of means, abs use assumes symmetric distns; n rows as obs, m cols as variables
 X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.5);
@@ -96,8 +111,5 @@ Xac=hcat(Xam0,Xda);
 bst, dtest = xgb_analysis(vcat(Xnc,Xac),y; trees=100, depth=6);
 best_st, best_at, precision, accuracy, recall, f1 = optimize_thresholds(Xnc, Xac, mcdf_abs);
 
-#metr=get_metrics(mcdf_abs, Xnc, Xac, fill(0.05,size(Xnc,2)), 3; display=true);
-
-# OneR ON SINGLE COLUMNS TO GET BEST THRESHOLD FOR EACH COLUMN, THEN SCORE AS 0/1. THEN LOOK AT VARIOUS WAYS TO AGGREGATE 0/1 SCORES FOR EACH COLUMN, FOR EXAMPLE, THRESHOLD ON SUM. BUT ALSO CONSIDER RUNNING DECISION TREE ON 0/1 VALUES OR AUTOENCODE TO GET FEATURES, ETC.
-
+metr=get_metrics(mcdf_abs, Xnc, Xac, fill(0.05,size(Xnc,2)), 3; display=true);
 

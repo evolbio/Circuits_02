@@ -2,8 +2,8 @@ module Boost
 include("Data.jl")
 using .Data
 using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics,
-		Base.Threads
-export oneR_analysis, xgb_analysis
+		Base.Threads, JSON3, CairoMakie, Graphs, GraphMakie, NetworkLayout
+export oneR_analysis, xgb_analysis, print_all_trees, make_graphs
 
 # samples in rows, features in cols
 function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6)
@@ -147,6 +147,129 @@ function plot_all_roc_curves(data_matrix)
     end
 
     display(p)
+end
+
+
+# print trees from xgboost in text format
+# Function to print a tree in a readable text format
+function print_tree(tree, indent="")
+    if haskey(tree, "children")
+        println(indent, "Split: ", tree["split"], " < ", tree["split_condition"])
+        println(indent, "Yes ->")
+        print_tree(tree["children"][1], indent * "  ")
+        println(indent, "No ->")
+        print_tree(tree["children"][2], indent * "  ")
+    else
+        println(indent, "Leaf: ", tree["leaf"])
+    end
+end
+
+function print_all_trees(model_result)
+	model_dump = XGBoost.dump(model_result, fmap="", with_stats=true)
+	for (i, tree) in enumerate(model_dump)
+    	println("Tree $i:")
+    	print_tree(tree)
+    	println()
+	end
+end
+
+# Function to convert XGBoost tree to a graphic format
+
+function make_graphs(model_result; show_plot=true)
+    model_dump = XGBoost.dump(model_result, fmap="", with_stats=true)
+    
+    n_trees = length(model_dump)
+    n_cols = min(5, n_trees)  # Maximum 5 columns
+    n_rows = ceil(Int, n_trees / n_cols)
+    
+    if show_plot
+        # Create a figure with a grid of subplots for display
+        fig = Figure(size=(200 * n_cols, 200 * n_rows))  # Adjust size as needed
+        
+        for (i, tree) in enumerate(model_dump)
+            row = (i - 1) ÷ n_cols + 1
+            col = (i - 1) % n_cols + 1
+            ax = Axis(fig[row, col], title="Tree $i")
+            plot_xgb_tree(tree, ax)
+        end
+        
+        # Display the figure
+        Makie.display(fig)
+    else
+        # Save individual PDF files for each tree
+        for (i, tree) in enumerate(model_dump)
+            fig = Figure()
+            ax = Axis(fig[1, 1], title="Tree $i")
+            plot_xgb_tree(tree, ax)
+            save("xgboost_tree_$i.pdf", fig)
+            println("Tree $i saved as xgboost_tree_$i.pdf")
+        end
+    end
+end
+
+function xgb_tree_to_graph(tree::JSON3.Object)
+    g = SimpleDiGraph()
+    properties = Any[]
+    
+    function walk_tree!(node, parent_id=nothing)
+        add_vertex!(g)
+        current_id = nv(g)
+        
+        if parent_id !== nothing
+            add_edge!(g, parent_id, current_id)
+        end
+        
+        if haskey(node, :split)
+            label = "$(node.split) < $(round(node.split_condition, digits=2))\n$(round(node.gain, digits=2))"
+            push!(properties, (:Node, label))
+            
+            walk_tree!(node.children[1], current_id)
+            walk_tree!(node.children[2], current_id)
+        else
+            label = "$(round(node.leaf, digits=2))"  # Just the number, without "Leaf:"
+            push!(properties, (:Leaf, label))
+        end
+    end
+    
+    walk_tree!(tree)
+    return g, properties
+end
+
+Makie.@recipe(PlotXGBoostTree, tree) do scene
+    Attributes(
+        nodecolormap = :viridis,
+        textcolor = :black,
+        leafcolor = :green,
+        nodecolor = :white,
+    )
+end
+
+function Makie.plot!(plt::PlotXGBoostTree)
+    tree = plt[:tree][]
+    graph, properties = xgb_tree_to_graph(tree)
+    
+    labels = [p[2] for p in properties]
+    node_colors = [p[1] == :Leaf ? :transparent : plt[:nodecolor][] for p in properties]
+    label_colors = [p[1] == :Leaf ? plt[:leafcolor][] : plt[:textcolor][] for p in properties]
+    
+    node_sizes = [p[1] == :Leaf ? 0 : 40 for p in properties]
+    
+    graphplot!(plt, graph;
+        layout=Buchheim(),
+        nlabels=labels,
+        node_color=node_colors,
+        nlabels_color=label_colors,
+        node_size=node_sizes,
+        nlabels_align=(:center, :center),
+        nlabels_textsize=10,
+        nlabels_distance=0,
+    )
+end
+
+function plot_xgb_tree(tree::JSON3.Object, ax)
+    plotxgboosttree!(ax, tree)
+    hidedecorations!(ax)
+    hidespines!(ax)
 end
 
 end # module Boost
