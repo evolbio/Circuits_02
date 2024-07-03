@@ -3,13 +3,14 @@ include("Data.jl")
 using .Data
 using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics,
 		Base.Threads, JSON3, CairoMakie, Graphs, GraphMakie, NetworkLayout
-export oneR_analysis, xgb_analysis, print_all_trees, make_graphs
+export oneR_analysis, xgb_analysis, print_all_trees, print_tree_stats, make_graphs,
+		plot_f1
 
 # samples in rows, features in cols
-function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6)
+function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6, show_info=true)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
-		println(rstate)
+		if show_info println(rstate) end
 	end
 	copy!(Random.default_rng(), rstate)
 	
@@ -29,8 +30,9 @@ function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6)
 	
 	# Create and train the model
 	# params as here: https://xgboost.readthedocs.io/en/stable/parameter.html
+	kw = show_info ? Dict() : Dict(:watchlist => [])
 	bst = xgboost(dtrain, num_round=trees, max_depth=depth, eta=0.3, objective="binary:logistic",
-					eval_metric="logloss")
+					eval_metric="logloss"; kw...)
 	
 	# Make predictions on the test set
 	y_pred = XGBoost.predict(bst, dtest)
@@ -45,16 +47,18 @@ function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6)
 	precision_value = tp / (tp + fp)
 	f1_score = 2 * (precision_value * recall_value) / (precision_value + recall_value)
 	
-	# Print results
-	println("Accuracy: ", round(accuracy, digits=4))
-	println("Recall: ", round(recall_value, digits=4))
-	println("Precision: ", round(precision_value, digits=4))
-	println("F1 Score: ", round(f1_score, digits=4))
-	
-	# Display feature importance
-	feature_importance = importance(bst)
-	display(feature_importance)
-	return bst, dtest
+	if show_info
+		# Print results
+		println("Accuracy: ", round(accuracy, digits=4))
+		println("Recall: ", round(recall_value, digits=4))
+		println("Precision: ", round(precision_value, digits=4))
+		println("F1 Score: ", round(f1_score, digits=4))
+		
+		# Display feature importance
+		feature_importance = importance(bst)
+		display(feature_importance)
+	end
+	return bst, dtest, (accuracy, recall_value, precision_value, f1_score)
 end
 
 # takes data with features in rows and observations in columns
@@ -270,6 +274,112 @@ function plot_xgb_tree(tree::JSON3.Object, ax)
     plotxgboosttree!(ax, tree)
     hidedecorations!(ax)
     hidespines!(ax)
+end
+
+# Function to calculate the depth of a tree
+function get_tree_depth(tree)
+    if haskey(tree, "children")
+        return 1 + maximum(get_tree_depth.(tree["children"]))
+    else
+        return 0
+    end
+end
+
+# Function to count the number of nodes in a tree
+function count_nodes(tree)
+    if haskey(tree, "children")
+        return 1 + sum(count_nodes.(tree["children"]))
+    else
+        return 1
+    end
+end
+
+# Function to count the number of leaves in a tree
+function count_leaves(tree)
+    if haskey(tree, "children")
+        return sum(count_leaves.(tree["children"]))
+    else
+        return 1
+    end
+end
+
+# Function to extract basic stats from a tree
+function get_tree_stats(tree)
+    num_nodes = count_nodes(tree)
+    num_leaves = count_leaves(tree)
+    depth = get_tree_depth(tree)
+    return num_nodes, num_leaves, depth
+end
+
+# Iterate over each tree in the model dump
+function print_tree_stats(model_result)
+	model_dump = XGBoost.dump(model_result, fmap="", with_stats=true)
+	for (i, tree) in enumerate(model_dump)
+		num_nodes, num_leaves, depth = get_tree_stats(tree)
+		println("Tree $i:")
+		println("  Depth: $depth")
+		println("  Number of nodes: $num_nodes")
+		println("  Number of leaves: $num_leaves")
+		println()
+	end
+end
+
+exp2range(r::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}) = exp2.(r)
+exp2range(r::UnitRange{Int64}) = Int.(exp2.(r))
+
+# plot F1 for range of num_trees and tree_depth
+function plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
+		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5))
+	top = Int(floor(sqrt(maximum(trees))))
+	xt = exp2range(1:top)
+	pl_size=(length(mean_scale)*260,length(features)*325)
+	pl = Plots.plot(xscale=:log2, xticks=(xt,string.(xt)), legend=show_legend ? :topleft : :none,
+			legendtitle="depth", xlabel="Number of trees", ylabel="F1 score",
+			layout=(length(mean_scale),length(features)), size=pl_size)
+	s = 1
+	show_rstate=true
+	for f in features
+		for m in mean_scale
+			X,y,nm,nc=generate_data(Int(data_size),f,0.1; mean_scale=m, show_rstate=show_rstate)
+			show_rstate=false
+			println("features = ", f, "; mean_scale = ", m)
+			default(;lw=2)
+			top = Int(floor(sqrt(maximum(trees))))
+			xt = exp2range(1:top)
+			for i in 1:length(depth)
+				f1=zeros(length(trees));
+				for j in 1:length(trees)
+					bst, dtest, stats = xgb_analysis(X,y; trees=trees[j], depth=depth[i], show_info=false);
+					f1[j]=stats[4]
+				end
+				Plots.plot!(trees,f1,label=depth[i],subplot=s)
+				display(pl)
+			end
+			s += 1
+		end
+	end
+	display(pl)
+	return pl
+end
+
+# plot F1 for range of num_trees and tree_depth
+function plot_f1_single(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5, features=32, mean_scale=0.5)
+	X,y,nm,nc=generate_data(Int(data_size),features,0.1; mean_scale=mean_scale)
+	default(;lw=2)
+	top = Int(floor(sqrt(maximum(trees))))
+	xt = exp2range(1:top)
+	pl = Plots.plot(xscale=:log2, xticks=(xt,string.(xt)), legend=show_legend ? :topleft : :none,
+			legendtitle="depth", xlabel="Number of trees", ylabel="F1 score")
+	for i in 1:length(depth)
+		f1=zeros(length(trees));
+		for j in 1:length(trees)
+			bst, dtest, stats = xgb_analysis(X,y; trees=trees[j], depth=depth[i], show_info=false);
+			f1[j]=stats[4]
+		end
+		Plots.plot!(trees,f1,label=depth[i])
+	end
+	display(pl)
+	return pl
 end
 
 end # module Boost

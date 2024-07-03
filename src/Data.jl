@@ -10,11 +10,13 @@ export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
 function generate_data(n_samples, n_dimensions, anomaly_ratio;
-			mean_scale=0.0, rstate=nothing, eta_normal=1.0, eta_anomaly=1.0)
+			mean_scale=0.0, rstate=nothing, show_rstate=true, eta_normal=1.0, eta_anomaly=1.0)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
-		println("rstate for generate_data:")
-		println(rstate)
+		if show_rstate
+			println("rstate for generate_data:")
+			println(rstate)
+		end
 	end
 	copy!(Random.default_rng(), rstate)
 

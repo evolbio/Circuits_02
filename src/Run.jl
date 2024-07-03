@@ -33,18 +33,25 @@ Boost.plot_all_roc_curves(hcat(X,y)')
 
 # XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
+
+# plot F1 for varying numbers of trees and tree depth
+# NEXT: MAKE GRID OF PLOTS FOR VARYING FEATURES AND MEAN_SCALE
+plot_f1()
+
+
+# various examples
 X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.2);
-bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
+bst, dtest, stats = xgb_analysis(X,y; trees=100, depth=6);
 
-X,y,nm,nc=generate_data(1000000,8,0.1; mean_scale=0.9);
-bst, dtest = xgb_analysis(X,y; trees=3, depth=1);
+X,y,nm,nc=generate_data(1000000,20,0.1; mean_scale=0.5);
+bst, dtest, stats = xgb_analysis(X,y; trees=3, depth=1);
+
+print_tree_stats(bst)
 print_all_trees(bst)
-
 make_graphs(bst)
 
-model_dump = XGBoost.dump(bst, fmap="", with_stats=true);
 
-
+############################################################################################
 
 # Following show the information in various types of OneR analyses, always less than xgboost
 # If only information is in individual feature means, does OneR does OK. 
