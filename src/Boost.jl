@@ -338,8 +338,8 @@ function plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
 			layout=(length(mean_scale),length(features)), size=pl_size)
 	s = 1
 	show_rstate=true
-	for f in features
-		for m in mean_scale
+	for m in mean_scale
+		for f in features
 			X,y,nm,nc=generate_data(Int(data_size),f,0.1; mean_scale=m, show_rstate=show_rstate)
 			show_rstate=false
 			println("features = ", f, "; mean_scale = ", m)
