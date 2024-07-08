@@ -2,9 +2,10 @@ module Boost
 include("Data.jl")
 using .Data
 using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics,
-		Base.Threads, JSON3, CairoMakie, Graphs, GraphMakie, NetworkLayout
+		Base.Threads, JSON3, CairoMakie, Graphs, GraphMakie, NetworkLayout,
+		DataInterpolations, RegularizationTools
 export oneR_analysis, xgb_analysis, print_all_trees, print_tree_stats, make_graphs,
-		plot_f1
+		plot_f1, exp2range, plot_f1_trends
 
 # samples in rows, features in cols
 function xgb_analysis(X, y; rstate=nothing, trees=100, depth=6, show_info=true)
@@ -329,19 +330,25 @@ exp2range(r::UnitRange{Int64}) = Int.(exp2.(r))
 
 # plot F1 for range of num_trees and tree_depth
 function plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
-		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5))
+		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), smooth=false, rstate=nothing)
+	if rstate === nothing
+		rstate = copy(Random.default_rng())
+		if show_info println(rstate) end
+	end
+	copy!(Random.default_rng(), rstate)
+	
+	df = DataFrame(trees=Int[], depth=Int[], features=Int[], scale=Float64[], F1=Float64[])
+
 	top = Int(floor(sqrt(maximum(trees))))
 	xt = exp2range(1:top)
-	pl_size=(length(mean_scale)*260,length(features)*325)
+	pl_size=(length(features)*325,length(mean_scale)*260)
 	pl = Plots.plot(xscale=:log2, xticks=(xt,string.(xt)), legend=show_legend ? :topleft : :none,
 			legendtitle="depth", xlabel="Number of trees", ylabel="F1 score",
 			layout=(length(mean_scale),length(features)), size=pl_size)
 	s = 1
-	show_rstate=true
 	for m in mean_scale
 		for f in features
-			X,y,nm,nc=generate_data(Int(data_size),f,0.1; mean_scale=m, show_rstate=show_rstate)
-			show_rstate=false
+			X,y,nm,nc=generate_data(Int(data_size),f,0.1; mean_scale=m, show_rstate=false)
 			println("features = ", f, "; mean_scale = ", m)
 			default(;lw=2)
 			top = Int(floor(sqrt(maximum(trees))))
@@ -351,12 +358,99 @@ function plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
 				for j in 1:length(trees)
 					bst, dtest, stats = xgb_analysis(X,y; trees=trees[j], depth=depth[i], show_info=false);
 					f1[j]=stats[4]
+					push!(df, Dict(:trees => trees[j], :depth=>depth[i], :features=>f, :scale=>m, :F1=>f1[j]))
 				end
-				Plots.plot!(trees,f1,label=depth[i],subplot=s)
+				if smooth && f1[1] > 0
+					Plots.plot!(RegularizationSmooth(f1,Float64.(trees),4;λ=1e0,alg = :fixed),label=depth[i],subplot=s)
+				elseif smooth
+					tr = trees[f1 .>= 0]
+					f1 = f1[f1 .>= 0]
+					Plots.plot!(RegularizationSmooth(f1,Float64.(tr),4;λ=1e0,alg = :fixed),label=depth[i],subplot=s)
+				else
+					Plots.plot!(trees,f1,label=depth[i],subplot=s)
+				end
 				display(pl)
 			end
 			s += 1
 		end
+	end
+	display(pl)
+	return pl, df
+end
+
+exp2_1(x) = 2^x - 1
+
+# take a dataframe for F1 and make a plot
+function plot_f1(df::DataFrame; smooth=true)
+	features = unique(df.features)
+	mean_scale = unique(df.scale)
+	trees = unique(df.trees)
+	depth = unique(df.depth)
+	top = Int(floor(sqrt(maximum(trees))))
+	xt = exp2range(1:top)
+	yt = exp2_1.(0.0:0.2:1.0)
+	pl_size=(length(features)*325,length(mean_scale)*260)
+	pl = Plots.plot(xscale=:log2, xticks=(xt,string.(xt)), yticks=(yt,string.(0.0:0.2:1.0)),
+			legend=:none, ylimits=(0,1),
+			legendtitle="depth", xlabel="Number of trees", ylabel="F1 score",
+			layout=(length(mean_scale),length(features)), size=pl_size)
+	s = 1
+	for m in mean_scale
+		for f in features
+			println("features = ", f, "; mean_scale = ", m)
+			default(;lw=2)
+			for i in 1:length(depth)
+				f1=zeros(length(trees));
+				for j in 1:length(trees)
+					curr_val = (trees=trees[j], depth = depth[i], features = f, scale = m)
+					f1[j]=filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)[1,:F1]
+				end
+				f1 .= exp2_1.(f1)
+				if smooth && f1[1] > 0
+					Plots.plot!(RegularizationSmooth(f1,Float64.(trees),4;λ=1e0,alg = :fixed),label=depth[i],subplot=s)
+				elseif smooth
+					tr = trees[f1 .> 0]
+					f1 = f1[f1 .> 0]
+					Plots.plot!(RegularizationSmooth(f1,Float64.(tr),4;λ=1e0,alg = :fixed),label=depth[i],subplot=s)
+				else
+					Plots.plot!(trees,f1,label=depth[i],subplot=s)
+				end
+				display(pl)
+			end
+			s += 1
+		end
+	end
+	display(pl)
+	return pl
+end
+
+function plot_f1_trends(df::DataFrame; smooth=false)
+	curr_val = (trees=8, depth = 4)
+	df2=filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)
+	select!(df2, [:features, :scale, :F1])
+	features = unique(df.features)
+	mean_scale = unique(df.scale)
+	yt = exp2_1.(0.0:0.2:1.0)
+	pl = Plots.plot(yticks=(yt,string.(0.0:0.2:1.0)),
+			legend=:none, ylimits=(0,1), xlabel="Mean scale", ylabel="F1 score")
+	default(;lw=2)
+	for f in features
+		f1=zeros(length(mean_scale))
+		for i in 1:length(mean_scale)
+			curr_val = (features = f, scale = mean_scale[i])
+			f1[i] = filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df2)[1,:F1]
+		end
+		f1 .= exp2_1.(f1)
+		if smooth && f1[1] > 0
+			Plots.plot!(RegularizationSmooth(f1,Float64.(mean_scale),4;λ=1e0,alg = :fixed))
+		elseif smooth
+			tr = trees[f1 .> 0]
+			f1 = f1[f1 .> 0]
+			Plots.plot!(RegularizationSmooth(f1,Float64.(mean_scale),4;λ=1e0,alg = :fixed))
+		else
+			Plots.plot!(mean_scale,f1)
+		end
+		display(pl)
 	end
 	display(pl)
 	return pl

@@ -34,10 +34,29 @@ Boost.plot_all_roc_curves(hcat(X,y)')
 # XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
 
-# plot F1 for varying numbers of trees and tree depth
-# NEXT: MAKE GRID OF PLOTS FOR VARYING FEATURES AND MEAN_SCALE
-plot_f1()
+# plot F1, features increase along rows, mean_scale along cols, rising curves for increasing
+# depth per tree, defaults: trees=2:20, depth=2:6, show_legend=false, data_size=1e5, 
+#		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5)
+# NOTE: different random seeds give significantly different magnitudes for F1 because there is only
+# one instance of the typical data generator and correlation structure. However the relative trends are
+# consistent, and we are only interested in those relative trends.
+# Use this seed if consistent underlying data required, otherwise use rstate=nothing
+using Anomaly, Random, Plots
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8ab1fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f290b0eb);
+pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
+		features=exp2range(3:4), mean_scale=0.05*exp2range(4:5), rstate=rstate, smooth=false);
+pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e6,
+		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), rstate=rstate, smooth=true);
 
+df_write(df, "/Users/steve/Desktop/df.arrow");
+df = df_read("/Users/steve/Desktop/df.arrow")
+
+pl=plot_f1(df; smooth=true)
+pl=plot_f1_trends(df; smooth=true)
+
+# REDO GENERATING DATA FOR PLOTS: GENERATE ONE MATRIX ONLY; USE SUBSETS OF X FOR CHANGING NUMBER
+# OF FEATURES; RESCALE FOR CHANGING MEAN_SCALE VALUES
 
 # various examples
 X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.2);

@@ -1,11 +1,11 @@
 module Data
 
 using Random, Statistics, Distributions, StatsBase, LinearAlgebra, Printf,
-		Optimization, OptimizationOptimJL
+		Optimization, OptimizationOptimJL, DataFrames, Arrow
 export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
 		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p,
 		select_top_mean_columns, vec2matrix, calculate_metrics, get_metrics,
-		optimize_thresholds
+		optimize_thresholds, df_write, df_read
 
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
@@ -312,5 +312,8 @@ function optimize_thresholds(Xnc, Xac, mcdf_abs; rstate=nothing)
 
     return best_thresholds, best_aggr_threshold, precision, accuracy, recall, f1
 end
+
+df_write(df, file) = Arrow.write(file, df; compress=:lz4)
+df_read(file) = DataFrame(Arrow.Table(file))
 
 end # module Data
