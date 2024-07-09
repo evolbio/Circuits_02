@@ -5,7 +5,7 @@ using Random, Statistics, Distributions, StatsBase, LinearAlgebra, Printf,
 export generate_data, digitize_matrix, pairwise_diffs_top, mean_corr,
 		normal_data, anomaly_data, center_data, ecdf_matrix, ecdf, median_p,
 		select_top_mean_columns, vec2matrix, calculate_metrics, get_metrics,
-		optimize_thresholds, df_write, df_read
+		optimize_thresholds, df_write, df_read, adjust_mean_scale
 
 # returns data with observations in rows and features in columns
 # mean_scale = 0 centers all dimensions on 0
@@ -35,16 +35,17 @@ function generate_data(n_samples, n_dimensions, anomaly_ratio;
     normal_dist = MvNormal(normal_mean, normal_corr)
 
     # Anomaly data
-    anomaly_corrs = [random_correlation_matrix(n_dimensions, eta_anomaly) for _ in 1:n_anomaly_processes]
-    anomaly_dists = [MvNormal(mean_scale * randn(n_dimensions), corr) for corr in anomaly_corrs]
+    anomaly_corr = [random_correlation_matrix(n_dimensions, eta_anomaly) for _ in 1:n_anomaly_processes]
+    anomaly_mean = repeat(mean_scale * randn(n_dimensions), 1, n_anomaly_processes)'
+    anomaly_dist = [MvNormal(anomaly_mean[i,:], anomaly_corr[i]) for i in 1:length(anomaly_corr)]
 
     # Generate data
     X_normal = rand(normal_dist, n_normal)
-    X_anomaly = hcat([rand(dist, round(Int, n_anomaly / n_anomaly_processes)) for dist in anomaly_dists]...)
+    X_anomaly = hcat([rand(dist, round(Int, n_anomaly / n_anomaly_processes)) for dist in anomaly_dist]...)
 
     # Ensure X_anomaly has exactly n_anomaly columns
     if size(X_anomaly, 2) < n_anomaly
-        X_anomaly = hcat(X_anomaly, rand(anomaly_dists[end], n_anomaly - size(X_anomaly, 2)))
+        X_anomaly = hcat(X_anomaly, rand(anomaly_dist[end], n_anomaly - size(X_anomaly, 2)))
     elseif size(X_anomaly, 2) > n_anomaly
         X_anomaly = X_anomaly[:, 1:n_anomaly]
     end
@@ -52,7 +53,23 @@ function generate_data(n_samples, n_dimensions, anomaly_ratio;
    	X = hcat(X_normal, X_anomaly)
 	y = vcat(falses(n_normal), trues(n_anomaly))
 
-    return X', y, normal_mean, normal_corr
+    return X', y, normal_mean, anomaly_mean, normal_corr
+end
+
+# d is scale ratio for adjustment, nm is normal means vector, am is matrix of anomaly means
+# each row is a vector of means for one anomaly observation
+function adjust_mean_scale(X,y,d,f,nm,am)
+	@assert sum(y) == size(am,1)
+	@assert size(nm,1) == size(am,2)
+	Xn = X[y .== 0,:]
+	Xa = X[y .== 1,:]
+	# make matrix with each column having fixed value from vector of means, nm
+	M = repeat(nm,1,size(Xn,1))'
+	# for mean µ, x = (x-µ) + µ*d = x + (d-1)µ
+	Xn = Xn[:,1:f] .+ (d-1)*M[:,1:f]
+	# for anomaly means, am is a matrix, each row has the means for one obs along cols
+	Xa = Xa[:,1:f] .+ (d-1)*am[:,1:f]
+	return vcat(Xn,Xa)
 end
 
 # pick top correlated pairs, top is number of pairs, 0 is all

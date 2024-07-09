@@ -27,7 +27,7 @@ println("Optimized Parameters: ", optimized_params)
 using Data, Boost, Surprisal
 
 # OneR analysis
-X,y,nc=generate_data(10000,10,0.1;mean_scale=0.2);
+X,y,nm,am,nc=generate_data(10000,10,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
@@ -42,15 +42,15 @@ Boost.plot_all_roc_curves(hcat(X,y)')
 # consistent, and we are only interested in those relative trends.
 # Use this seed if consistent underlying data required, otherwise use rstate=nothing
 using Anomaly, Random, Plots
-rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8ab1fd37d743,
-		0x0ac6d49d37d1ad50, 0xa30788b9f290b0eb);
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
 pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e5,
 		features=exp2range(3:4), mean_scale=0.05*exp2range(4:5), rstate=rstate, smooth=false);
 pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e6,
 		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), rstate=rstate, smooth=true);
 
 df_write(df, "/Users/steve/Desktop/df.arrow");
-df = df_read("/Users/steve/Desktop/df.arrow")
+df = df_read("/Users/steve/Desktop/df_full.arrow")
 
 pl=plot_f1(df; smooth=true)
 pl=plot_f1_trends(df; smooth=true)
@@ -59,10 +59,10 @@ pl=plot_f1_trends(df; smooth=true)
 # OF FEATURES; RESCALE FOR CHANGING MEAN_SCALE VALUES
 
 # various examples
-X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.2);
+X,y,nm,am,nc=generate_data(100000,20,0.1; mean_scale=0.2);
 bst, dtest, stats = xgb_analysis(X,y; trees=100, depth=6);
 
-X,y,nm,nc=generate_data(1000000,20,0.1; mean_scale=0.5);
+X,y,nm,am,nc=generate_data(1000000,20,0.1; mean_scale=0.5);
 bst, dtest, stats = xgb_analysis(X,y; trees=3, depth=1);
 
 print_tree_stats(bst)
@@ -78,7 +78,7 @@ make_graphs(bst)
 # However, comparing to xgboost shows that much information is in broader multivariate info
 
 # Surprisal analysis of means, abs use assumes symmetric distns; n rows as obs, m cols as variables
-X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.5);
+X,y,nm,am,nc=generate_data(100000,20,0.1; mean_scale=0.5);
 #bst, dtest = xgb_analysis(X,y; trees=100, depth=6);
 Xn=normal_data(X,y);							# get normal obs, drop anomalies
 means, corr = mean_corr(Xn);					# values for normal obs
@@ -117,7 +117,7 @@ score_vec = score_p(mcdf_abs, Xdn0, fill(0.05,size(Xdn0,2)), 3)
 score_vec = score_p(mcdf_abs, Xda0, fill(0.05,size(Xda0,2)), 3)
 
 # combine top means and top correlation pairs into single ensemble
-X,y,nm,nc=generate_data(100000,20,0.1; mean_scale=0.5);
+X,y,nm,am,nc=generate_data(100000,20,0.1; mean_scale=0.5);
 Xn=normal_data(X,y);							# get normal obs, drop anomalies
 means, corr = mean_corr(Xn);					# values for normal obs
 Xnm,m_means,m_idx=select_top_mean_columns(Xn, means, 9);	# get top 5 cols w/top deviations of mean from 0
