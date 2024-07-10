@@ -1,9 +1,11 @@
 module Boost
 include("Data.jl")
 using .Data
+include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
+using .MMAColors
 using Plots, DataFrames, MLBase, ROCAnalysis, XGBoost, MLDataUtils, Random, Statistics,
 		Base.Threads, JSON3, CairoMakie, Graphs, GraphMakie, NetworkLayout,
-		DataInterpolations, RegularizationTools
+		DataInterpolations, RegularizationTools, Measures
 export oneR_analysis, xgb_analysis, print_all_trees, print_tree_stats, make_graphs,
 		plot_f1, exp2range, plot_f1_trends
 
@@ -482,33 +484,86 @@ function plot_f1(df::DataFrame; smooth=true)
 end
 
 function plot_f1_trends(df::DataFrame; smooth=false)
-	scale_y = false
-	curr_val = (trees=8, depth = 2)
-	df2=filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)
-	select!(df2, [:features, :scale, :F1])
-	features = unique(df2.features)
-	mean_scale = unique(df2.scale)
-	yt = scale_y ? exp2_1.(0.0:0.2:1.0) : 0.0:0.2:1.0
-	pl = Plots.plot(yticks=(yt,string.(0.0:0.2:1.0)), xscale=:log2,
-			legend=:none, ylimits=(-0.02,1.02), xlabel="Mean scale", ylabel="F1 score")
-	default(;lw=2)
-	for f in features
-		f1=zeros(length(mean_scale))
-		for i in 1:length(mean_scale)
-			curr_val = (features = f, scale = mean_scale[i])
-			f1[i] = filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df2)[1,:F1]
+	tree_vec = [4, 8, 16]
+	depth_vec = [2, 4, 6]
+	features = unique(df.features)
+	mean_scale = unique(df.scale)
+	xt = (mean_scale, string.(mean_scale))
+	yt = 0.0:0.2:1.0
+	pl_size=(length(depth_vec)*325*1.0,length(tree_vec)*260*1.0)
+	pl = Plots.plot(yticks=(yt,string.(0.0:0.2:1.0)), xticks=xt, xscale=:log2,
+			legend=:none, ylimits=(-0.02,1.02), xlabel="", ylabel="", grid=:none,
+			size=pl_size, layout=(length(tree_vec),length(depth_vec)))
+	default(;lw=2.5)
+	s = 1
+	for tr in tree_vec
+		for dp in depth_vec
+			curr_val = (trees=tr, depth = dp)
+			df2=filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)
+			select!(df2, [:features, :scale, :F1])
+			c = 1
+			for f in features
+				f1=zeros(length(mean_scale))
+				for i in 1:length(mean_scale)
+					curr_val = (features = f, scale = mean_scale[i])
+					f1[i] = filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df2)[1,:F1]
+				end
+				f1 .= max.(f1,0)
+				ms = mean_scale[f1 .>= 0]
+				f1 = f1[f1 .>= 0]
+				if smooth && length(f1)>3
+					#Plots.plot!(RegularizationSmooth(f1,Float64.(ms),3;λ=1e-1,alg = :fixed))
+					Plots.plot!(AkimaInterpolation(f1,Float64.(ms)), subplot=s, color=mma[c])
+				else
+					Plots.plot!(ms,f1,subplot=s, color=mma[c])
+				end
+				display(pl)
+				c += 1
+			end
+			s += 1
 		end
-		f1 .= max.(f1,0)
-		ms = mean_scale[f1 .> 0]
-		f1 = f1[f1 .> 0]
-		if scale_y f1 .= exp2_1.(f1) end
-		if smooth && length(f1)>3
-			Plots.plot!(RegularizationSmooth(f1,Float64.(ms),5;λ=1e-1,alg = :fixed))
-		else
-			Plots.plot!(ms,f1)
-		end
-		display(pl)
 	end
+	annotate!(pl,(0.5,-0.23),Plots.text("Mean scale",18),subplot=8, bottom_margin=1cm)
+	annotate!(pl,(-0.23,0.5),Plots.text("F1 score",18,rotation=90),subplot=4, left_margin=1cm)
+	a = collect('a':'z')
+	s = 1
+	for i in 1:length(tree_vec)
+		for j in 1:length(depth_vec)
+			annotate!(pl,(0.07,0.98),Plots.text("("*a[s]*")",11),subplot=s)
+			annotate!(pl,(0.38,0.98),Plots.text(
+				"("*string(tree_vec[i])*","*string(depth_vec[j])*")",11,:center),subplot=s)
+			s+=1
+		end
+	end
+	annotate!(pl,(0.38,0.88),Plots.text("(trees,depth)",11,:center),subplot=1)
+
+	
+	# make legend for line types
+	s=4
+	y_base=0.35
+	x = fill([0.13,0.21],length(features))
+	y=[[k,k] for k in y_base:0.1:(y_base+0.1*(length(features)-1))]
+	for i in 1:length(x)
+		Plots.plot!(x[i],y[i],subplot=s,color=mma[i])
+		annotate!(pl,(0.38,y[i][1]),Plots.text(features[i],9,:right),subplot=s)
+	end
+	annotate!(pl,(0.37,0.02+y_base+0.1*length(features)),Plots.text("features",11,:right),subplot=s)
+	lf = 0.11
+	rt = 0.33
+	bt = y_base - 0.07
+	tp = y_base + 0.50
+	Plots.plot!(pl,[lf,rt,rt,lf,lf],[bt,bt,tp,tp,bt],color=:black,lw=1,subplot=s)
+	
+# 	# label rows and cols of plots
+# 	annotate!(pl,(0.02,1.08),Plots.text("tree depth =",12,:left),subplot=1,top_margin=15pt)
+# 	for i in 1:length(depth_vec)
+# 		annotate!(pl,(0.5,1.08),Plots.text(string(depth_vec[i]),12,:center),subplot=i)
+# 	end
+# 	annotate!(pl,(1.06,0.90),Plots.text("trees =",12,:left,rotation=270),subplot=3,right_margin=13pt)
+# 	for i in 1:length(tree_vec)
+# 		annotate!(pl,(1.06,0.5),Plots.text(string(tree_vec[i]),12,:center,rotation=270),subplot=i*3)
+# 	end
+
 	display(pl)
 	return pl
 end

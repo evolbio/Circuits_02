@@ -31,6 +31,18 @@ X,y,nm,am,nc=generate_data(10000,10,0.1;mean_scale=0.2);
 results=oneR_analysis(hcat(X,y)')
 Boost.plot_all_roc_curves(hcat(X,y)')
 
+# XGBoost figure for manuscript
+using Anomaly, Random, Plots
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
+pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e6,
+		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), rstate=rstate, smooth=false);
+df_write(df, "/Users/steve/Desktop/df.arrow");
+# rename file to df_full.arrow to avoid overwriting
+df = df_read("/Users/steve/Desktop/df_full.arrow");
+pl=plot_f1_trends(df; smooth=false)
+savefig(pl, "/Users/steve/Desktop/xgboost.pdf")
+
 # XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
 
@@ -41,6 +53,8 @@ Boost.plot_all_roc_curves(hcat(X,y)')
 # one instance of the typical data generator and correlation structure. However the relative trends are
 # consistent, and we are only interested in those relative trends.
 # Use this seed if consistent underlying data required, otherwise use rstate=nothing
+
+# Various XGBoost plots and tests
 using Anomaly, Random, Plots
 rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
 		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
@@ -50,10 +64,10 @@ pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e6,
 		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), rstate=rstate, smooth=true);
 
 df_write(df, "/Users/steve/Desktop/df.arrow");
-df = df_read("/Users/steve/Desktop/df_full.arrow")
+df = df_read("/Users/steve/Desktop/df_full.arrow");
 
 pl=plot_f1(df; smooth=true)
-pl=plot_f1_trends(df; smooth=true)
+pl=plot_f1_trends(df; smooth=false)
 
 # REDO GENERATING DATA FOR PLOTS: GENERATE ONE MATRIX ONLY; USE SUBSETS OF X FOR CHANGING NUMBER
 # OF FEATURES; RESCALE FOR CHANGING MEAN_SCALE VALUES
