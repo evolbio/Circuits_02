@@ -43,6 +43,24 @@ df = df_read("/Users/steve/Desktop/xgboost.arrow");
 pl=plot_f1_trends(df; smooth=false)
 savefig(pl, "/Users/steve/Desktop/xgboost.pdf")
 
+# Encoder figure for manuscript
+using Anomaly, Random, Plots
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
+df = encoder_loop(;n=2:5, mean_scale=0.05*exp2range(1:5), rstate=rstate, data_size=1e5);
+
+df_write(df, "/Users/steve/Desktop/df.arrow");
+# rename file to encoder.arrow to avoid overwriting
+df = df_read("/Users/steve/Desktop/encoder.arrow");
+pl = plot_encoder(df);
+savefig(pl, "/Users/steve/Desktop/encoder.pdf")
+
+
+df = encoder_loop(;n=3:4, mean_scale=0.05*exp2range(3:4), rstate=rstate, data_size=1e5);
+
+############################################################################################
+
+
 # XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
 
