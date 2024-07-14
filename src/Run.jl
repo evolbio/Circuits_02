@@ -38,8 +38,8 @@ rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743
 pl,df=plot_f1(; trees=2:20, depth=2:6, show_legend=false, data_size=1e6,
 		features=exp2range(2:5), mean_scale=0.05*exp2range(1:5), rstate=rstate, smooth=false);
 df_write(df, "/Users/steve/Desktop/df.arrow");
-# rename file to df_full.arrow to avoid overwriting
-df = df_read("/Users/steve/Desktop/df_full.arrow");
+# rename file to df_full.arrow or xgboost.arrow to avoid overwriting
+df = df_read("/Users/steve/Desktop/xgboost.arrow");
 pl=plot_f1_trends(df; smooth=false)
 savefig(pl, "/Users/steve/Desktop/xgboost.pdf")
 
