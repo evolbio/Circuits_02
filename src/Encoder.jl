@@ -46,8 +46,6 @@ end
 
 function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=nothing,
 					show_rstate=true, show_results=false, num_epoch=3000)
-	@printf("Size X = %d, 2^n = %d", size(X,1), 2^n)
-	#@assert X === nothing || size(X,1) == 2^n	"# features must be 2^n"
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		if show_rstate
@@ -57,19 +55,23 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	end
 	copy!(Random.default_rng(), rstate)
 
-	m = twoD ? n-1 : n
-	input_dim = 2^n
-	output_dim = 2^(n-m)
-	hidden_layers = [2^(n-i) for i in 1:m-1]
-	
 	if X === nothing
-		X, y, nm, am, nc = Anomaly.generate_data(100000, 2^n, 0.1; mean_scale=mean_scale, rstate=rstate)
+		input_dim = 2^n
+		X, y, nm, am, nc = Anomaly.generate_data(100000, input_dim, 0.1; mean_scale=mean_scale, rstate=rstate)
+	else
+		input_dim = size(X, 2)			# before taking transpose, cols are features
+		n = ceil(Int, log2(input_dim))  # Adjust n based on actual input dimension
 	end
+	
+	@assert !twoD || input_dim > 1	"Cannot have twoD with 1D input"
+	m = twoD ? n-1 : n
+	output_dim = 2^(n-m)
+	
 	X = X'  # Transpose X to match the expected input shape
 	X_train, y_train, X_test, y_test = split_data(X, y)
 
 	rng = Random.default_rng()
-	model = create_encoder(input_dim, output_dim, hidden_layers)
+	model = create_encoder(input_dim, output_dim)
 	ps, st = Lux.setup(rng, model)
 	
 	# Initialize logistic regression parameters
@@ -106,7 +108,6 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	
 	if show_results
 		# Evaluate and visualize
-		
 		display(p)
 		
 		println("\nTest Set Evaluation:")
@@ -122,13 +123,42 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	return f1, p
 end
 
-function create_encoder(input_dim::Int, output_dim::Int, hidden_layers::Vector{Int})
+function create_encoder(input_dim::Int, output_dim::Int)
     layers = []
-    push!(layers, Dense(input_dim => hidden_layers[1], tanh))
-    for i in 1:length(hidden_layers)-1
-        push!(layers, Dense(hidden_layers[i] => hidden_layers[i+1], tanh))
+    
+    if input_dim == 1
+        if output_dim == 1
+            push!(layers, Dense(1 => 1, tanh))
+        else
+            throw(ArgumentError("Cannot increase dimensionality from 1 to $output_dim"))
+        end
+    elseif input_dim == output_dim
+        # If input_dim equals output_dim, use a single layer
+        push!(layers, Dense(input_dim => output_dim, tanh))
+    else
+        n = floor(Int, log2(input_dim))
+        
+        if 2^n == input_dim && input_dim > output_dim
+            # If input_dim is a power of 2 and greater than output_dim, start reducing
+            push!(layers, Dense(input_dim => input_dim ÷ 2, tanh))
+            n -= 1
+        elseif 2^n < input_dim
+            # If input_dim is not a power of 2, reduce to the nearest lower power of 2
+            push!(layers, Dense(input_dim => 2^n, tanh))
+        end
+        
+        # Subsequent layers: reduce by factor of 2 each time
+        while 2^n > output_dim
+            push!(layers, Dense(2^n => 2^(n-1), tanh))
+            n -= 1
+        end
+        
+        # Output layer
+        if 2^n != output_dim
+            push!(layers, Dense(2^n => output_dim))
+        end
     end
-    push!(layers, Dense(hidden_layers[end] => output_dim))
+    
     return Chain(layers...)
 end
 
