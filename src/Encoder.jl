@@ -45,7 +45,9 @@ function plot_encoder(df::DataFrame)
 end
 
 function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=nothing,
-					show_rstate=true, show_results=false)
+					show_rstate=true, show_results=false, num_epoch=3000)
+	@printf("Size X = %d, 2^n = %d", size(X,1), 2^n)
+	#@assert X === nothing || size(X,1) == 2^n	"# features must be 2^n"
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		if show_rstate
@@ -78,7 +80,7 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	optimizer = Optimisers.Adam(0.001)
 	opt_state = Optimisers.setup(optimizer, ps)
 	
-	for epoch in 1:3000
+	for epoch in 1:num_epoch
 		grad_ps, grad_w, grad_b =
 			Zygote.gradient((ps, w, b) -> new_loss(ps, w, b, st, model, X_train, y_train), ps, w, b)
 		opt_state, ps = Optimisers.update(opt_state, ps, grad_ps)

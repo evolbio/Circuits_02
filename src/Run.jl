@@ -55,8 +55,13 @@ df = df_read("/Users/steve/Desktop/encoder.arrow");
 pl = plot_encoder(df);
 savefig(pl, "/Users/steve/Desktop/encoder.pdf")
 
+# Encoder iterative feature selection
+using Anomaly, Random
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
+X,y,nm,am,nc=generate_data(100000,8,0.1;mean_scale=0.8);
+top_f = iterative_feature_selection(X', y, 4);
 
-df = encoder_loop(;n=3:4, mean_scale=0.05*exp2range(3:4), rstate=rstate, data_size=1e5);
 
 ############################################################################################
 
