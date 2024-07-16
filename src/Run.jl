@@ -55,24 +55,22 @@ df = df_read("/Users/steve/Desktop/encoder.arrow");
 pl = plot_encoder(df);
 savefig(pl, "/Users/steve/Desktop/encoder.pdf")
 
-# Encoder iterative feature selection
-using Anomaly, Random
-rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
-		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
-X,y,nm,am,nc=generate_data(100000,32,0.1;mean_scale=0.4, rstate=rstate);
-iter_df = iterative_feature_search(X, y; max_features=8, rstate=rstate, num_epoch=3000);
-
+# loop through mean_scale values, use this for figure encoder feature selection
 using Anomaly, Random
 rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
 		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
 df = feature_loop(32, 8; mean_scale=0.05*exp2range(1:5), rstate=rstate,
 					show_rstate=false, data_size=1e5, num_epoch=10000);
 
-df = feature_loop(8, 4; mean_scale=0.05*exp2range(1:3), rstate=rstate,
-					show_rstate=false, data_size=1e5, num_epoch=3000);
-
 ############################################################################################
 
+
+# Encoder iterative feature selection
+using Anomaly, Random
+rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
+		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
+X,y,nm,am,nc=generate_data(100000,32,0.1;mean_scale=0.4, rstate=rstate);
+iter_df = iterative_feature_search(X, y; max_features=8, rstate=rstate, num_epoch=3000);
 
 # XGBoost analysis, good way to approximate maximum information available in data
 # generate_data(samples, features, anomaly_proc, anomaly_ratio; mean_scale=0.0, η_normal=1.0, η_anomaly=1.0)
