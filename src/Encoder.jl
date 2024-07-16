@@ -1,22 +1,32 @@
 module Encoder
 
 using Anomaly, Plots, Lux, Random, Optimisers, Zygote, Statistics, LinearAlgebra, Printf,
-		DataFrames
+		DataFrames, ProgressMeter, Base.Threads
 include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
 using .MMAColors
-export encoder, encoder_loop, plot_encoder
+export encoder, encoder_loop, plot_encoder, iterative_feature_search, feature_loop
 
 function encoder_loop(;n=2:5, mean_scale=0.05*exp2range(1:5), twoD=false, rstate=nothing,
-						data_size=1e5, show_rstate=true)
+						data_size=1e5, show_rstate=true, num_epoch)
+	if rstate === nothing
+		rstate = copy(Random.default_rng())
+		if show_rstate
+			println("rstate for encoder:")
+			println(rstate)
+		end
+	end
+	copy!(Random.default_rng(), rstate)
+
 	df = DataFrame(features=Int[], scale=Float64[], F1=Float64[])
-	X,y,nm,am,nc=generate_data(Int(data_size),2^n[end],0.1; mean_scale=mean_scale[1], show_rstate=false)
+	X,y,nm,am,nc=generate_data(Int(data_size),2^n[end],0.1; mean_scale=mean_scale[1], 
+							rstate=rstate, show_rstate=false)
 	for m in mean_scale
 		for nn in n
 			f = 2^nn
 			d = m/mean_scale[1]		# multiplier for scaling relative to smallest scale value
 			Xf = adjust_mean_scale(X,y,d,f,nm,am)
 			@printf("features = %2d, mean_scale = %3.1f\n", f, m)
-			f1, _ = encoder(Xf,y; n=nn, mean_scale=m, rstate=rstate)
+			f1, _ = encoder(Xf,y; n=nn, mean_scale=m, rstate=rstate, num_epoch=num_epoch)
 			push!(df, Dict(:features=>f, :scale=>m, :F1=>f1))
 		end
 	end
@@ -49,7 +59,7 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		if show_rstate
-			println("rstate for generate_data:")
+			println("rstate for encoder:")
 			println(rstate)
 		end
 	end
@@ -301,6 +311,77 @@ function split_data(X, y, train_ratio=0.7)
     train_indices = indices[1:train_size]
     test_indices = indices[train_size+1:end]
     return X[:, train_indices], y[train_indices], X[:, test_indices], y[test_indices]
+end
+
+### Code for iterative feature search, find best subset of features to reduce dimensionality
+
+function feature_loop(orig_features, max_features; mean_scale=0.05*exp2range(1:5), rstate=nothing,
+						show_rstate=true, data_size=1e5, num_epoch=3000)
+	if rstate === nothing
+		rstate = copy(Random.default_rng())
+		if show_rstate
+			println("rstate for encoder:")
+			println(rstate)
+		end
+	end
+	copy!(Random.default_rng(), rstate)
+
+	df = nothing
+	X,y,nm,am,nc=generate_data(Int(data_size),orig_features,0.1; mean_scale=mean_scale[1], 
+							rstate=rstate, show_rstate=false)
+	for m in mean_scale
+		d = m/mean_scale[1]		# multiplier for scaling relative to smallest scale value
+		Xf = adjust_mean_scale(X,y,d,orig_features,nm,am)
+		@printf("mean_scale = %3.1f\n", m)
+		new_df = iterative_feature_search(Xf, y, m; max_features=max_features, rstate=rstate,
+			num_epoch=num_epoch, show_progress=false)
+		df === nothing ? df = new_df : df = vcat(df, new_df)
+	end
+	return df
+end
+
+function iterative_feature_search(X, y, mean_scale; max_features=size(X, 2)÷2, rstate=nothing,
+			num_epoch=3000, show_progress=true)
+    best_features = Int[]
+    results = DataFrame(mean_scale=Float64[], features=Int[], selected_features=Vector{Int}[], F1=Float64[])
+    if show_progress p = Progress(max_features, 1, "Searching features: ") end # progress bar
+
+    for f in 1:max_features
+        local_best_f1 = Atomic{Float64}(0.0)
+        local_best_feature = Atomic{Int}(0)
+
+        Threads.@threads for i in 1:size(X, 2)
+            if i ∉ best_features
+                current_features = sort([best_features; i])
+                X_subset = X[:, current_features]
+                
+                f1, _ = encoder(X_subset, y; rstate=rstate, show_rstate=false, num_epoch=num_epoch)
+
+                # Atomic operations to update best score and feature
+                while true
+                    old_f1 = local_best_f1[]
+                    if f1 <= old_f1
+                        break
+                    end
+                    if atomic_cas!(local_best_f1, old_f1, f1) === old_f1
+                        atomic_xchg!(local_best_feature, i)
+                        break
+                    end
+                end
+            end
+        end
+
+        new_best_feature = local_best_feature[]
+        new_best_f1 = local_best_f1[]
+
+        # Always add the best feature for this iteration
+        push!(best_features, new_best_feature)
+
+        push!(results, (mean_scale, f, copy(best_features), new_best_f1))
+        if show_progress next!(p) end # update progress bar
+    end
+
+    return results
 end
 
 end # module Encoder
