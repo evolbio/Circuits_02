@@ -17,7 +17,7 @@ export temporal, multisensor, generate_data, digitize_matrix, pairwise_diffs_top
 		vec2matrix, calculate_metrics, get_metrics, optimize_thresholds, print_all_trees,
 		make_graphs, print_tree_stats, plot_f1, exp2range, df_write, df_read, plot_f1_trends,
 		adjust_mean_scale, encoder, encoder_loop, plot_encoder, iterative_feature_search,
-		feature_loop
+		feature_loop, plot_features
 
 
 end # module Anomaly

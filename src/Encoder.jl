@@ -4,7 +4,7 @@ using Anomaly, Plots, Lux, Random, Optimisers, Zygote, Statistics, LinearAlgebra
 		DataFrames, ProgressMeter, Base.Threads
 include("/Users/steve/sim/zzOtherLang/julia/modules/MMAColors.jl")
 using .MMAColors
-export encoder, encoder_loop, plot_encoder, iterative_feature_search, feature_loop
+export encoder, encoder_loop, plot_encoder, iterative_feature_search, feature_loop, plot_features
 
 function encoder_loop(;n=2:5, mean_scale=0.05*exp2range(1:5), twoD=false, rstate=nothing,
 						data_size=1e5, show_rstate=true, num_epoch)
@@ -33,6 +33,7 @@ function encoder_loop(;n=2:5, mean_scale=0.05*exp2range(1:5), twoD=false, rstate
 	return df
 end
 
+# if multiple obs for a feature and mean_scale combination, then plot the average F1 for those vals
 function plot_encoder(df::DataFrame)
 	features = unique(df.features)
 	mean_scale = unique(df.scale)
@@ -46,10 +47,16 @@ function plot_encoder(df::DataFrame)
 		f1=zeros(length(mean_scale));
 		for i in 1:length(mean_scale)
 			curr_val = (scale=mean_scale[i], features = features[j])
-			f1[i]=filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)[1,:F1]
+			f1[i]=mean(filter(row -> all(row[col] == val for (col, val) in pairs(curr_val)), df)[:,:F1])
 		end
 		plot!(mean_scale,f1,color=mma[j])
 	end
+	annotate!(pl,(0.29,0.18),text("4",9,:center))
+	#annotate!(pl,(0.25,0.325),text("8",9,:center))
+	annotate!(pl,(0.24,0.42),text("8",9,:center))
+	annotate!(pl,(0.18,0.715),text("16",9,:center))
+	annotate!(pl,(0.15,0.94),text("32",9,:center))
+
 	display(pl)
 	return pl
 end
@@ -254,10 +261,10 @@ end
 function visualize_encoded_data(encoded, y, separation_direction=nothing, threshold=nothing, typical_mean=nothing, direction=1)
     if size(encoded, 1) == 1
         encoded_vec = vec(encoded)
-        p = histogram(encoded_vec[y .== 0], bins=100, alpha=0.5, label="Typical", color=:blue, normalize=:probability)
-        histogram!(p, encoded_vec[y .== 1], bins=100, alpha=0.5, label="Anomalous", color=:red, normalize=:probability)
+        p = histogram(encoded_vec[y .== 0], bins=100, alpha=0.5, label="Typical", color=mma[1], normalize=:probability)
+        histogram!(p, encoded_vec[y .== 1], bins=100, alpha=0.5, label="Anomalous", color=mma[2], normalize=:probability)
         if !isnothing(threshold)
-            vline!([threshold], label="Decision Boundary", color=:green, linewidth=2)
+            vline!([threshold], label="Decision Boundary", color=mma[3], linewidth=2)
         end
         xlabel!(p, "Encoded Value")
         ylabel!(p, "Probability")
@@ -270,10 +277,10 @@ function visualize_encoded_data(encoded, y, separation_direction=nothing, thresh
         end
     else
         p = scatter(encoded[1, y .== 0], encoded[2, y .== 0], 
-                    label="Typical", color=:blue, alpha=0.6, 
+                    label="Typical", color=mma[1], alpha=0.99, 
                     markersize=3, markerstrokewidth=0)
         scatter!(p, encoded[1, y .== 1], encoded[2, y .== 1], 
-                 label="Anomalous", color=:red, alpha=0.6, 
+                 label="Anomalous", color=mma[2], alpha=0.7, 
                  markersize=3, markerstrokewidth=0)
         if !isnothing(separation_direction) && !isnothing(threshold) && !isnothing(typical_mean)
             perpendicular_direction = [-separation_direction[2], separation_direction[1]]
@@ -294,12 +301,11 @@ function visualize_encoded_data(encoded, y, separation_direction=nothing, thresh
             boundary_x = [p[1] for p in boundary_points]
             boundary_y = [p[2] for p in boundary_points]
             
-            plot!(p, boundary_x, boundary_y, label="Decision Boundary", color=:green, linewidth=2)
+            plot!(p, boundary_x, boundary_y, label="Decision Boundary", color=mma[3], linewidth=2)
         end
         xlabel!(p, "Encoded Dimension 1")
         ylabel!(p, "Encoded Dimension 2")
     end
-    title!(p, "Encoded Data Visualization")
     return p
 end
 
@@ -349,6 +355,8 @@ function iterative_feature_search(X, y, mean_scale; max_features=size(X, 2)÷2, 
     for f in 1:max_features
         local_best_f1 = Atomic{Float64}(0.0)
         local_best_feature = Atomic{Int}(0)
+        
+        @printf("Working on feature number %2d\n", f)
 
         Threads.@threads for i in 1:size(X, 2)
             if i ∉ best_features
@@ -382,6 +390,25 @@ function iterative_feature_search(X, y, mean_scale; max_features=size(X, 2)÷2, 
     end
 
     return results
+end
+
+function plot_features(df; n_features=[2, 4, 8])
+	features = unique(df.features)
+	mean_scale = unique(df.mean_scale)
+	yt = collect(0.0:0.2:1.0)
+	pl_size=(325,260)
+	pl = Plots.plot(xscale=:log2, xticks=(mean_scale,string.(mean_scale)), yticks=(yt,string.(0.0:0.2:1.0)),
+			legend=:none, ylimits=(0,1),
+			xlabel="Mean scale", ylabel="F1 score", size=pl_size)
+	default(;lw=2)
+	i = 1
+	for f in n_features
+		df_tmp = df[df.features .== f, :]
+		plot!(df_tmp.mean_scale, df_tmp.F1, color=mma[i])
+		i += 1
+	end
+	display(pl)
+	return pl
 end
 
 end # module Encoder
