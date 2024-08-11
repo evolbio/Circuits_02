@@ -57,6 +57,7 @@ function plot_encoder(df::DataFrame)
 	annotate!(pl,(0.24,0.42),text("8",9,:center))
 	annotate!(pl,(0.18,0.715),text("16",9,:center))
 	annotate!(pl,(0.15,0.94),text("32",9,:center))
+	annotate!(pl,(-0.16,0.999),text("(a)",10,:center))
 
 	display(pl)
 	return pl
@@ -372,7 +373,7 @@ function backward_feature_elimination(X, y, mean_scale; min_features=1, rstate=n
             
             f1, _ = encoder(X_subset, y; rstate=rstate, show_rstate=false, num_epoch=num_epoch)
             
-            @printf("When removing feature %d yields f1 = %5.3f\n", i, f1)
+            @printf("When removing feature %2d yields f1 = %5.3f\n", current_features[i], f1)
             
             if f1 > best_f1_without_feature
                 best_f1_without_feature = f1
@@ -463,6 +464,12 @@ function plot_features(df; n_features=[2, 4, 8])
 		plot!(df_tmp.mean_scale, df_tmp.F1, color=mma[i])
 		i += 1
 	end
+	annotate!(pl,(0.27,0.16),text("1",9,:center))
+	annotate!(pl,(0.245,0.29),text("4",9,:center))
+	annotate!(pl,(0.22,0.51),text("8",9,:center))
+	annotate!(pl,(0.175,0.805),text("16",9,:center))
+	annotate!(pl,(0.15,0.95),text("32",9,:center))
+	annotate!(pl,(-0.16,0.999),text("(b)",10,:center))
 	display(pl)
 	return pl
 end

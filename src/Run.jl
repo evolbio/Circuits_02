@@ -68,16 +68,15 @@ savefig(pl, "/Users/steve/Desktop/encoder.pdf")
 using Anomaly, Random
 rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743,
 		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
-#rstate=nothing
-df = feature_loop_backward(8, 1; mean_scale=0.05*exp2range(1:1), rstate=rstate,
-                                               show_rstate=false, data_size=1e5, num_epoch=3000);
-df = feature_loop_backward(32, 1; mean_scale=0.05*exp2range(1:1), rstate=rstate,
-                                               show_rstate=false, data_size=1e5, num_epoch=3000);
+# rstate=nothing
+# run mean_scale 1:1, 2:2, ..., 5:5 separately and then combine df's w/vcat
+df = feature_loop_backward(32, 1; mean_scale=0.05*exp2range(1:5), rstate=rstate,
+                                               show_rstate=false, data_size=1e5, num_epoch=5000);
 
 # update plotting of interative feature search
 df_write(df, "/Users/steve/Desktop/iter_f.arrow");
 #df = df_read("/Users/steve/Desktop/iter_f_1.arrow");
-pl = plot_features(df; n_features=[1,2,3,4,5]);
+pl = plot_features(df; n_features=[4,8,16,32,1]);
 savefig(pl, "/Users/steve/Desktop/iter_f.pdf")
 
 ############################################################################################
