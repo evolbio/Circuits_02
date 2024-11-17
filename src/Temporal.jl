@@ -5,22 +5,27 @@ using .MMAColors
 export temporal
 
 # Receptor response for temporal anomaly detection.
-function temporal(; base_in=100, m2_frac=0.1, r_scale=25, rstate = nothing)
+# base_in is m1 and also equilibrium for input dynamics
+# need input values to be of same order of magnitude for receptor sensitivity,
+# which is set by m values
+function temporal(; base_in=10000, m2_frac=0.1, r_scale=25, rstate = nothing)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		println(rstate)
 	end
 	copy!(Random.default_rng(), rstate)
+	m1 = u = base_in
 	m2 = m2_frac*base_in
+	a = (2*m1^2+4+u)*(m2^2+u+2)^2/((2*m2^2+u+4)*(m1^2+u+2)^2)
 	sol = dynamics(base_in)
 	pl = plot(layout=(2,1),size=(750,600))
 	plot!(sol.t,[sol[1,:],sol[2,:]], subplot=1,lw=[1.5 2.25],color=[mma[1] mma[2]],
-		label=["input value" "internal average"])
+		label=["input value" "internal average"], legend=:bottomleft)
 	plot!(sol.t,[sol[4,:],
-		[receptor0(sol[2,i],sol[1,i],base_in,m2,2,1) .* r_scale for i in 1:length(sol[1,:])]],
+		[receptor0(sol[2,i],sol[1,i],base_in,m2,2,a) .* r_scale for i in 1:length(sol[1,:])]],
 		subplot=2,lw=[2.25 1.8],xlabel="Time", label=["anomaly jumps" "receptor response"],
-		color=[mma[1] mma[2]])
-	annotate!(pl,(0.05,0.72),text("(a)",10),subplot=1)
+		color=[mma[1] mma[2]], legend=:bottomright)
+	annotate!(pl,(0.05,0.88),text("(a)",10),subplot=1)
 	annotate!(pl,(0.05,0.88),text("(b)",10),subplot=2)
 	display(pl)
 	return sol, pl
