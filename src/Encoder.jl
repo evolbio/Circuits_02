@@ -64,7 +64,7 @@ function plot_encoder(df::DataFrame)
 end
 
 function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=nothing,
-					show_rstate=true, show_results=false, num_epoch=3000)
+					show_rstate=true, show_results=false, num_epoch=3000, subset=1.0)
 	if rstate === nothing
 		rstate = copy(Random.default_rng())
 		if show_rstate
@@ -118,11 +118,13 @@ function encoder(X=nothing, y=nothing; n=4, twoD=false, mean_scale=0.8, rstate=n
 	encoded_test, _ = model(X_test, ps, st)
 	if output_dim == 1
 		accuracy, precision, recall, f1, threshold, confusion_matrix, direction = evaluate_1d(encoded_test, y_test)
-		p = visualize_encoded_data(encoded_test, y_test, nothing, threshold, nothing, direction)
+		p = visualize_encoded_data(encoded_test, y_test, nothing, threshold, nothing,
+				direction; subset=subset)
 	else
 		accuracy, precision, recall, f1, threshold, confusion_matrix, separation_direction,
 			typical_mean, direction = evaluate_2d(encoded_test, y_test)
-		p = visualize_encoded_data(encoded_test, y_test, separation_direction, threshold, typical_mean, direction)
+		p = visualize_encoded_data(encoded_test, y_test, separation_direction, threshold,
+				typical_mean, direction; subset=subset)
 	end
 	
 	if show_results
@@ -260,7 +262,12 @@ function evaluate_2d(encoded, y)
     return accuracy, precision, recall, f1, threshold, confusion_matrix, separation_direction, typical_mean, direction
 end
 
-function visualize_encoded_data(encoded, y, separation_direction=nothing, threshold=nothing, typical_mean=nothing, direction=1)
+function visualize_encoded_data(encoded, y, separation_direction=nothing, threshold=nothing, typical_mean=nothing, direction=1; subset=1.0)
+	n = size(encoded,2)
+	m = Int(round(subset*n))
+	rindices = randperm(n)[1:m]
+	encoded = encoded[:,rindices]
+	y = y[rindices]
     if size(encoded, 1) == 1
         encoded_vec = vec(encoded)
         p = histogram(encoded_vec[y .== 0], bins=100, alpha=0.5, label="Typical", color=mma[1], normalize=:probability)

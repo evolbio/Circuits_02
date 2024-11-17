@@ -48,7 +48,8 @@ using Anomaly, Random, Plots
 rstate=Random.Xoshiro(0x88eb0947697305c4, 0xde316ffed0db551b, 0x234055d83576e283,
 		0xf68b1e95960ec797, 0xa30788b9f260b0eb);
 X, y, nm, am, nc = Anomaly.generate_data(100000, 32, 0.1; mean_scale=1.6, rstate=rstate);
-f1, pl = encoder(X[:,1:4],y;twoD=true,rstate=rstate,show_results=true,num_epoch=10000)
+f1, pl = encoder(X[:,1:4],y;twoD=true,rstate=rstate,show_results=true,num_epoch=10000,
+			subset=0.1)
 savefig(pl, "/Users/steve/Desktop/enc_scatter.pdf")
 
 
