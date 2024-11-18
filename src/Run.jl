@@ -59,7 +59,7 @@ rstate=Random.Xoshiro(0xeaf747279f8ff889, 0xe40e689479627f4c, 0x146f8a31fd37d743
 		0x0ac6d49d37d1ad50, 0xa30788b9f260b0eb);
 df = encoder_loop(;n=2:5, mean_scale=0.05*exp2range(1:5), rstate=rstate, data_size=1e5, num_epoch=10000);
 
-df_write(df, "/Users/steve/Desktop/df.arrow");
+df_write(df, "/Users/steve/Desktop/encoder.arrow");
 # rename file to encoder.arrow to avoid overwriting
 df = df_read("/Users/steve/Desktop/encoder.arrow");
 pl = plot_encoder(df);
